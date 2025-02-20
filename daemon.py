@@ -59,13 +59,16 @@ def download_file(download_id, url, directory):
                             last_update_time = current_time
 
         status = "completed"
+        download_record.downloaded = downloaded
+        final_elapsed_time = time.time() - start_time
+        final_speed = downloaded / final_elapsed_time / 1024
+        download_record.speed = f"{final_speed:.2f} KB/s"
+        download_record.progress = "100%"
     except requests.RequestException as e:
         logger.error("Download error for %s: %s", url, e)
         status = "failed"
 
     download_record.status = status
-    if speed is not None:
-        download_record.speed = f"{speed:.2f} KB/s"
     thread_session.commit()
     logger.info("Download %s: %s", status, url)
     thread_session.close()
