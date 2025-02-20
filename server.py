@@ -75,7 +75,6 @@ def get_downloads():
             "date_added": d.date_added.strftime("%Y-%m-%d %H:%M:%S"),
             "progress": d.progress or "0%"
         } for d in downloads]
-        print(downloads_list)
     except Exception as e:
         logger.error(f"Error fetching downloads: {e}")
         downloads_list = []
