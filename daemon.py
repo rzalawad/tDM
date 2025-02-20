@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import threading
 import time
 
@@ -7,27 +8,37 @@ import requests
 from sqlalchemy.orm import sessionmaker
 
 from config import get_config
+from logger_config import setup_logger
 from models import DaemonSettings, Download, Session
 
-session = Session()
 config = get_config()
+logger = setup_logger("daemon", getattr(logging, config["log_level"].upper(), logging.INFO))
 
-logger = logging.getLogger("daemon")
-logger.setLevel(getattr(logging, config["log_level"].upper(), logging.INFO))
-handler = logging.StreamHandler()
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+
+def get_filename_from_cd(cd):
+    if not cd:
+        return None
+    fname = re.findall("filename=(.+)", cd)
+    if len(fname) == 0:
+        return None
+    return fname[0]
 
 
 def download_file(download_id, url, directory):
     thread_session = Session()
     logger.info("Starting download: %s to %s", url, directory)
-    local_filename = os.path.join(directory, url.split("/")[-1])
     speed = None
 
     try:
-        with requests.get(url, stream=True) as r:
+        with requests.get(url, stream=True, allow_redirects=True) as r:
+            content_disposition = r.headers.get("Content-Disposition")
+            filename = get_filename_from_cd(content_disposition)
+
+            if not filename:
+                filename = os.path.basename(url)
+
+            filename = filename.strip("\"'")
+            local_filename = os.path.join(directory, filename)
             r.raise_for_status()
             total_length = int(r.headers.get("content-length", 0))
             downloaded = 0
@@ -47,9 +58,7 @@ def download_file(download_id, url, directory):
                         current_time = time.time()
                         elapsed_time = current_time - start_time
                         speed = downloaded / elapsed_time / 1024
-                        progress = (
-                            (downloaded / total_length) * 100 if total_length else 0
-                        )
+                        progress = (downloaded / total_length) * 100 if total_length else 0
 
                         if current_time - last_update_time >= 1:
                             download_record.downloaded = downloaded
@@ -83,12 +92,8 @@ class DownloadDaemon(threading.Thread):
     def run(self):
         try:
             while self.running:
-                pending_downloads = (
-                    self.session.query(Download).filter_by(status="pending").all()
-                )
-                daemon_settings = (
-                    self.session.query(DaemonSettings).filter_by(id=1).first()
-                )
+                pending_downloads = self.session.query(Download).filter_by(status="pending").all()
+                daemon_settings = self.session.query(DaemonSettings).filter_by(id=1).first()
                 concurrency = daemon_settings.concurrency if daemon_settings else 1
 
                 active_downloads = []
