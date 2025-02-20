@@ -1,4 +1,4 @@
-module download-manager-client
+module github.com/rzalawda/tdm/go_client
 
 go 1.24.0
 

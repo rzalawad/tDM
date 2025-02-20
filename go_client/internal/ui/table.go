@@ -1,10 +1,11 @@
 package ui
 
 import (
-	"download-manager-client/internal/api"
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/rzalawda/tdm/go_client/internal/api"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"

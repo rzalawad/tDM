@@ -1,14 +1,15 @@
 package main
 
 import (
-	"download-manager-client/internal/api"
-	"download-manager-client/internal/ui"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/rzalawda/tdm/go_client/internal/api"
+	"github.com/rzalawda/tdm/go_client/internal/ui"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
