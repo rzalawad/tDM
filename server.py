@@ -1,19 +1,14 @@
 import logging
+
 from flask import Flask, jsonify, request
+
 from config import get_config
 from daemon import DownloadDaemon
+from logger_config import setup_logger
 from models import DaemonSettings, Download, Session
 
 app = Flask(__name__)
 
-def configure_logger(name, level):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    return logger
 
 @app.route("/download", methods=["POST"])
 def download_file():
@@ -37,6 +32,7 @@ def download_file():
 
     return jsonify({"message": "Download request received"}), 201
 
+
 @app.route("/settings/concurrency", methods=["PUT"])
 def update_concurrency():
     data = request.json
@@ -59,22 +55,26 @@ def update_concurrency():
     finally:
         session.close()
 
+
 @app.route("/downloads", methods=["GET"])
 def get_downloads():
     session = Session()
     try:
         downloads = session.query(Download).all()
-        downloads_list = [{
-            "id": d.id,
-            "url": d.url,
-            "directory": d.directory,
-            "status": d.status,
-            "speed": d.speed or "N/A",
-            "downloaded": d.downloaded or 0,
-            "total_size": d.total_size or 0,
-            "date_added": d.date_added.strftime("%Y-%m-%d %H:%M:%S"),
-            "progress": d.progress or "0%"
-        } for d in downloads]
+        downloads_list = [
+            {
+                "id": d.id,
+                "url": d.url,
+                "directory": d.directory,
+                "status": d.status,
+                "speed": d.speed or "N/A",
+                "downloaded": d.downloaded or 0,
+                "total_size": d.total_size or 0,
+                "date_added": d.date_added.strftime("%Y-%m-%d %H:%M:%S"),
+                "progress": d.progress or "0%",
+            }
+            for d in downloads
+        ]
     except Exception as e:
         logger.error(f"Error fetching downloads: {e}")
         downloads_list = []
@@ -82,6 +82,7 @@ def get_downloads():
         session.close()
 
     return jsonify(downloads_list)
+
 
 @app.route("/settings/concurrency", methods=["GET"])
 def get_concurrency():
@@ -98,9 +99,10 @@ def get_concurrency():
     finally:
         session.close()
 
+
 if __name__ == "__main__":
     config = get_config()
-    logger = configure_logger("server", getattr(logging, config["log_level"].upper(), logging.INFO))
+    logger = setup_logger("server", getattr(logging, config["log_level"].upper(), logging.INFO))
     logger.info("Configuration loaded: %s", config)
 
     session = Session()
