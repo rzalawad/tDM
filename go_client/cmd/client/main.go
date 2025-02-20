@@ -77,12 +77,17 @@ func main() {
 }
 
 func submitDownload(url, directory string) {
+	absPath, err := filepath.Abs(directory)
+	if err != nil {
+		log.Fatalf("Failed to resolve absolute path: %v", err)
+	}
+
 	apiClient := api.NewClient("http://localhost:54759")
-	err := apiClient.SubmitDownload(url, directory)
+	err = apiClient.SubmitDownload(url, absPath)
 	if err != nil {
 		log.Fatalf("Failed to submit download: %v", err)
 	}
-	fmt.Printf("Download request for %s submitted successfully.\n", url)
+	fmt.Printf("Download request for %s will be saved to %s\n", url, absPath)
 }
 
 func runTUI() {
