@@ -21,7 +21,9 @@ def get_filename_from_cd(cd):
     fname = re.findall("filename=(.+)", cd)
     if len(fname) == 0:
         return None
-    return fname[0]
+    fname = fname[0].strip("\"'")
+    fname = fname.encode("latin-1").decode("utf-8")
+    return fname
 
 
 def download_file(download_id, url, directory):
