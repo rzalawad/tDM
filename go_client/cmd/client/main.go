@@ -122,8 +122,10 @@ func runTUI() {
 	log.Printf("Initial concurrency set to: %d", concurrency)
 	maxDownloadSpeed := 0
 
-	table := ui.NewDownloadsTable(nil)
+	pages := tview.NewPages()
+	table := ui.NewDownloadsTable(nil, app, pages)
 	layout, settingsView, _ := ui.CreateLayoutWithTable(table, nil, concurrency, maxDownloadSpeed)
+	pages.AddPage("main", layout, true, true)
 
 	refreshDownloads := func() {
 		log.Println("Fetching downloads...")
@@ -195,18 +197,27 @@ func runTUI() {
 							} else {
 								log.Printf("Concurrency updated successfully to %d", concurrencyValue)
 								concurrency = concurrencyValue
-								refreshDownloads()
 							}
 						}
-						app.SetRoot(layout, true)
 					}
+					log.Printf("Launching Switch Go Routine")
+					// See: https://github.com/rivo/tview/issues/784 for why it must be a go routine
+					go func() {
+						app.QueueUpdateDraw(func() {
+							pages.RemovePage("concurrency")
+							pages.SwitchToPage("main")
+							app.SetFocus(table)
+							refreshDownloads()
+						})
+					}()
 				})
-			log.Println("Setting root to input field")
-			app.SetRoot(inputField, true)
+
+			pages.AddPage("concurrency", inputField, true, true)
+			app.SetFocus(inputField)
 			return nil
 		}
 		return event
-	})
+	}
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -217,6 +228,9 @@ func runTUI() {
 				log.Println("Stopping refresh goroutine...")
 				return
 			case <-ticker.C:
+				if pages.HasPage("concurrency") {
+					continue
+				}
 				log.Println("Periodic refresh triggered")
 				refreshDownloads()
 			}
@@ -249,7 +263,7 @@ func runTUI() {
 		})
 	}()
 
-	if err := app.SetRoot(layout, true).Run(); err != nil {
+	if err := app.SetInputCapture(mainInputCapture).SetRoot(pages, true).SetFocus(pages).Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}
 

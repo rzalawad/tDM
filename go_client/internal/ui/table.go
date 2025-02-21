@@ -11,7 +11,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-func NewDownloadsTable(downloads []api.Download) *tview.Table {
+func NewDownloadsTable(downloads []api.Download, app *tview.Application, pages *tview.Pages) *tview.Table {
 	table := tview.NewTable().
 		SetBorders(false).
 		SetFixed(1, 0).
@@ -85,7 +85,6 @@ func NewDownloadsTable(downloads []api.Download) *tview.Table {
 	}
 
 	table.ScrollToBeginning()
-
 	return table
 }
 
@@ -218,8 +217,8 @@ func CreateLayoutWithTable(table *tview.Table, downloads []api.Download, concurr
 
 	return layout, settingsView, keymapView
 }
-func CreateLayout(downloads []api.Download, concurrency int, maxDownloadSpeed int) (*tview.Flex, *tview.TextView, *tview.TextView) {
-	table := NewDownloadsTable(downloads)
+func CreateLayout(downloads []api.Download, concurrency int, maxDownloadSpeed int, app *tview.Application, pages *tview.Pages) (*tview.Flex, *tview.TextView, *tview.TextView) {
+	table := NewDownloadsTable(downloads, app, pages)
 	return CreateLayoutWithTable(table, downloads, concurrency, maxDownloadSpeed)
 }
 
