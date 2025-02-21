@@ -152,7 +152,15 @@ func runTUI() {
 		})
 	}
 
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	// Create a channel to signal goroutine shutdown
+	done := make(chan struct{})
+	defer close(done)
+
+	// Declare mainInputCapture variable first
+	var mainInputCapture func(event *tcell.EventKey) *tcell.EventKey
+
+	// Define the function after declaration
+	mainInputCapture = func(event *tcell.EventKey) *tcell.EventKey {
 		log.Printf("Key event received: %v, Rune: %c", event.Key(), event.Rune())
 
 		if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' || event.Rune() == 'Q' {
@@ -180,7 +188,6 @@ func runTUI() {
 								log.Printf("Invalid concurrency value: %v", err)
 								return
 							}
-
 							log.Printf("Attempting to update concurrency to %d", concurrencyValue)
 							err = apiClient.UpdateConcurrency(concurrencyValue)
 							if err != nil {
@@ -206,6 +213,9 @@ func runTUI() {
 		defer ticker.Stop()
 		for {
 			select {
+			case <-done:
+				log.Println("Stopping refresh goroutine...")
+				return
 			case <-ticker.C:
 				log.Println("Periodic refresh triggered")
 				refreshDownloads()

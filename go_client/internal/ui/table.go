@@ -115,7 +115,7 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 		createCell := func(text string, textColor tcell.Color, align int) *tview.TableCell {
 			return tview.NewTableCell(text).
 				SetTextColor(textColor).
-				SetAlign(align)
+				SetAlign(align).SetMaxWidth(1)
 		}
 
 		table.SetCell(i+1, 0, createCell(fmt.Sprintf("%d", download.ID),
@@ -125,7 +125,9 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 		urlCell.SetExpansion(2)
 		table.SetCell(i+1, 1, urlCell)
 
-		table.SetCell(i+1, 2, createCell(download.Status, statusColor, tview.AlignLeft))
+		downloadCell := createCell(download.Status, statusColor, tview.AlignLeft)
+		downloadCell.SetMaxWidth(11)
+		table.SetCell(i+1, 2, downloadCell)
 
 		dirCell := createCell(download.Directory, tcell.ColorLightGray, tview.AlignLeft)
 		dirCell.SetExpansion(1)
@@ -145,35 +147,14 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 			}
 		}
 		table.SetCell(i+1, 4, createCell(speedText,
-			tcell.ColorLightGray, tview.AlignLeft))
-		formatSize := func(bytes int) string {
-			if bytes == 0 {
-				return "0 KB"
-			}
-
-			kb := float64(bytes) / 1024
-			if kb < 1024 {
-				if kb < 1 {
-					return "1 KB"
-				}
-				return fmt.Sprintf("%d KB", int(kb))
-			}
-
-			mb := kb / 1024
-			if mb < 1024 {
-				return fmt.Sprintf("%.1f MB", mb)
-			}
-
-			gb := mb / 1024
-			return fmt.Sprintf("%.2f GB", gb)
-		}
+			tcell.ColorLightGray, tview.AlignLeft).SetMaxWidth(11))
 
 		table.SetCell(i+1, 5, createCell(formatSize(download.Downloaded),
 			tcell.ColorLightGray, tview.AlignLeft))
 		table.SetCell(i+1, 6, createCell(formatSize(download.TotalSize),
 			tcell.ColorLightGray, tview.AlignLeft))
 		table.SetCell(i+1, 7, createCell(download.DateAdded,
-			tcell.ColorLightGray, tview.AlignLeft))
+			tcell.ColorLightGray, tview.AlignLeft).SetMaxWidth(20))
 		table.SetCell(i+1, 8, createCell(download.Progress,
 			tcell.ColorLightGray, tview.AlignLeft))
 	}
