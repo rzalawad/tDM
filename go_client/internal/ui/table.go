@@ -88,6 +88,57 @@ func NewDownloadsTable(downloads []api.Download, app *tview.Application, pages *
 	return table
 }
 
+func ShowDetailedView(app *tview.Application, pages *tview.Pages, table *tview.Table, row int, mainInputCapture func(event *tcell.EventKey) *tcell.EventKey) {
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(fmt.Sprintf(
+			"[yellow]Download Details[-]\n\n"+
+				"[::b]URL:[-]         %s\n"+
+				"[::b]Status:[-]      %s\n"+
+				"[::b]Directory:[-]   %s\n"+
+				"[::b]Speed:[-]       %s\n"+
+				"[::b]Downloaded:[-]  %s\n"+
+				"[::b]Total Size:[-]  %s\n"+
+				"[::b]Date Added:[-]  %s\n"+
+				"[::b]Progress:[-]    %s",
+			table.GetCell(row, 1).Text,
+			table.GetCell(row, 2).Text,
+			table.GetCell(row, 3).Text,
+			table.GetCell(row, 4).Text,
+			table.GetCell(row, 5).Text,
+			table.GetCell(row, 6).Text,
+			table.GetCell(row, 7).Text,
+			table.GetCell(row, 8).Text,
+		))
+
+	frame := tview.NewFrame(textView).
+		SetBorders(0, 0, 0, 0, 0, 0).
+		AddText("Press ESC to close", true, tview.AlignCenter, tcell.ColorYellow)
+
+	flex.AddItem(nil, 0, 1, false).
+		// flex.
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(frame, 0, 4, true).
+			AddItem(nil, 0, 1, false),
+			15, 1, true).
+		AddItem(nil, 0, 1, false)
+
+	pages.AddPage("details", flex, true, true)
+	pages.SwitchToPage("details")
+
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Rune() == 'q' || event.Rune() == 'Q' {
+			pages.RemovePage("details")
+			pages.SwitchToPage("main")
+			app.SetInputCapture(mainInputCapture)
+			return nil
+		}
+		return event
+	})
+}
+
 func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 	start := time.Now()
 	log.Printf("Updating table with %d downloads...", len(downloads))

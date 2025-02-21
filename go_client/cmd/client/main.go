@@ -171,6 +171,16 @@ func runTUI() {
 			return nil
 		}
 
+		if event.Rune() == 'i' || event.Rune() == 'I' {
+			row, _ := table.GetSelection()
+			log.Printf("Enter pressed on row: %d", row)
+			if row > 0 { // Ignore header row
+				log.Printf("Showing detailed view for row: %d", row)
+				ui.ShowDetailedView(app, pages, table, row, mainInputCapture)
+				return nil
+			}
+		}
+
 		if event.Rune() == 'c' || event.Rune() == 'C' {
 			log.Println("Concurrency setting mode activated")
 			var inputField *tview.InputField
