@@ -43,6 +43,8 @@ func NewDownloadsTable(downloads []api.Download, app *tview.Application, pages *
 						color = tcell.ColorRed
 					case "completed":
 						color = tcell.ColorBlue
+					case "submitted":
+						color = tcell.ColorTeal
 					default:
 						color = tcell.ColorWhite
 					}
@@ -158,6 +160,8 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 			statusColor = tcell.ColorRed
 		case "completed":
 			statusColor = tcell.ColorBlue
+		case "submitted":
+			statusColor = tcell.ColorTeal
 		default:
 			statusColor = tcell.ColorWhite
 		}

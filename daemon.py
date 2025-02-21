@@ -101,6 +101,8 @@ class DownloadDaemon(threading.Thread):
                 active_downloads = []
                 for download in pending_downloads:
                     if len(active_downloads) < concurrency:
+                        download.status = "submitted"
+                        self.session.commit()
                         thread = threading.Thread(
                             target=download_file,
                             args=(download.id, download.url, download.directory),
