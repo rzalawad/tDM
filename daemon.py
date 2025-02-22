@@ -3,6 +3,7 @@ import os
 import re
 import threading
 import time
+from email.message import EmailMessage
 
 import requests
 from sqlalchemy.orm import sessionmaker
@@ -15,15 +16,13 @@ config = get_config()
 logger = setup_logger("daemon", getattr(logging, config["log_level"].upper(), logging.INFO))
 
 
-def get_filename_from_cd(cd):
-    if not cd:
+def get_filename_from_cd(content_disposition):
+    if not content_disposition:
         return None
-    fname = re.findall("filename=(.+)", cd)
-    if len(fname) == 0:
-        return None
-    fname = fname[0].strip("\"'")
-    fname = fname.encode("latin-1").decode("utf-8")
-    return fname
+    msg = EmailMessage()
+    msg["Content-Disposition"] = content_disposition.encode("latin-1").decode("utf-8")
+    filename = msg.get_filename()
+    return filename
 
 
 def download_file(download_id, url, directory):
