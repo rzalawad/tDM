@@ -2,6 +2,8 @@ database_path: downloads.db
 
 daemon:
   concurrency: 3
+  # mappper:
+  #   https://rapidgator.net: python3 ~/create_downloadable_url.py
 
 server:
   host: 0.0.0.0
