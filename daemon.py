@@ -1,6 +1,8 @@
 import logging
 import os
 import re
+import shlex
+import subprocess
 import threading
 import time
 from email.message import EmailMessage
@@ -25,12 +27,28 @@ def get_filename_from_cd(content_disposition):
     return filename
 
 
+def launch_cmd(command, url):
+    proc = subprocess.run([*shlex.split(command), url], capture_output=True, text=True)
+    if proc.returncode != 0:
+        logger.error(
+            "Error using %s to map url %s. Error: ", command, url, proc.stdout + proc.stderr
+        )
+        return None
+    return proc.stdout
+
+
 def download_file(download_id, url, directory):
     thread_session = Session()
     logger.info("Starting download: %s to %s", url, directory)
     speed = None
 
     try:
+        for pattern, map_program in config["daemon"]["mapper"].items():
+            if pattern in url:
+                mapped_url = launch_cmd(map_program, url)
+                if mapped_url is not None:
+                    url = mapped_url
+                break
         with requests.get(url, stream=True, allow_redirects=True) as r:
             content_disposition = r.headers.get("Content-Disposition")
             filename = get_filename_from_cd(content_disposition)
