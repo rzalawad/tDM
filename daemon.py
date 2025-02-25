@@ -100,6 +100,7 @@ def download_file(download_id, url, directory):
     except requests.RequestException as e:
         logger.error("Download error for %s: %s", url, e)
         status = "failed"
+        download_record.error = str(e)
 
     download_record.status = status
     thread_session.commit()
