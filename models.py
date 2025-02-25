@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -20,7 +20,7 @@ class Download(Base):
     progress = Column(String)
     downloaded = Column(Integer)
     total_size = Column(Integer)
-    date_added = Column(DateTime, default=datetime.utcnow)
+    date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class DaemonSettings(Base):
