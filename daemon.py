@@ -28,7 +28,7 @@ def get_filename_from_cd(content_disposition):
 
 
 def launch_cmd(command, url):
-    proc = subprocess.run([*shlex.split(command), url], capture_output=True, text=True)
+    proc = subprocess.run(command + " " + url, capture_output=True, text=True, shell=True)
     if proc.returncode != 0:
         logger.error(
             "Error using %s to map url %s. Error: %s ", command, url, proc.stdout + proc.stderr
