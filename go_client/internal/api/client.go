@@ -21,6 +21,7 @@ type Download struct {
 	TotalSize  int    `json:"total_size"`
 	DateAdded  string `json:"date_added"`
 	Progress   string `json:"progress"`
+	Error      string `json:"error"`
 }
 
 func NewClient(baseURL string) *Client {
@@ -44,6 +45,25 @@ func (c *Client) FetchDownloads() ([]Download, error) {
 	}
 
 	return downloads, nil
+}
+
+func (c *Client) FetchDownload(id int) (Download, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/download/%d", c.baseURL, id))
+	if err != nil {
+		return Download{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return Download{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var download Download
+	if err := json.NewDecoder(resp.Body).Decode(&download); err != nil {
+		return Download{}, err
+	}
+
+	return download, nil
 }
 
 func (c *Client) SubmitDownload(url, directory string) error {

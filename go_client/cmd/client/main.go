@@ -112,6 +112,7 @@ func runTUI() {
 	log.Println("Starting Download Manager Client TUI")
 
 	app := tview.NewApplication()
+	// TODO: allow argument passing
 	apiClient := api.NewClient("http://localhost:54759")
 
 	concurrency, err := apiClient.GetConcurrency()

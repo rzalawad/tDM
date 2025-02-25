@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/rzalawda/tdm/go_client/internal/api"
@@ -92,6 +93,18 @@ func NewDownloadsTable(downloads []api.Download, app *tview.Application, pages *
 
 func ShowDetailedView(app *tview.Application, pages *tview.Pages, table *tview.Table, row int, mainInputCapture func(event *tcell.EventKey) *tcell.EventKey) {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+
+	apiClient := api.NewClient("http://localhost:54759")
+	downloadId, err_conv := strconv.Atoi(table.GetCell(row, 0).Text)
+	if err_conv != nil {
+		log.Printf("Can't convert string to int: %d", table.GetCell(row, 0).Text)
+		return
+	}
+	download, err := apiClient.FetchDownload(downloadId)
+	if err != nil {
+		log.Printf("Can't get download for downloadId: %d", downloadId)
+		return
+	}
 	textView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetText(fmt.Sprintf(
@@ -103,7 +116,8 @@ func ShowDetailedView(app *tview.Application, pages *tview.Pages, table *tview.T
 				"[::b]Downloaded:[-]  %s\n"+
 				"[::b]Total Size:[-]  %s\n"+
 				"[::b]Date Added:[-]  %s\n"+
-				"[::b]Progress:[-]    %s",
+				"[::b]Progress:[-]    %s\n"+
+				"[::b]Error:[-]       %s",
 			table.GetCell(row, 1).Text,
 			table.GetCell(row, 2).Text,
 			table.GetCell(row, 3).Text,
@@ -112,6 +126,7 @@ func ShowDetailedView(app *tview.Application, pages *tview.Pages, table *tview.T
 			table.GetCell(row, 6).Text,
 			table.GetCell(row, 7).Text,
 			table.GetCell(row, 8).Text,
+			download.Error,
 		))
 
 	frame := tview.NewFrame(textView).
