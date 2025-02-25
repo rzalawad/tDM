@@ -56,6 +56,35 @@ def update_concurrency():
         session.close()
 
 
+@app.route("/download/<int:download_id>", methods=["GET"])
+def get_download(download_id: int):
+    session = Session()
+    try:
+        download = session.get(Download, download_id)
+        if download is None:
+            return jsonify({"error": f"download id {download_id} not found"}), 500
+
+    except Exception as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+    return jsonify(
+        {
+            "id": download.id,
+            "url": download.url,
+            "directory": download.directory,
+            "status": download.status,
+            "speed": download.speed or "N/A",
+            "downloaded": download.downloaded or 0,
+            "total_size": download.total_size or 0,
+            "date_added": download.date_added.strftime("%Y-%m-%d %H:%M:%S"),
+            "progress": download.progress or "0%",
+            "error": download.error,
+        }
+    )
+
+
 @app.route("/downloads", methods=["GET"])
 def get_downloads():
     session = Session()

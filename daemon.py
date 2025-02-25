@@ -31,23 +31,29 @@ def launch_cmd(command, url):
     proc = subprocess.run([*shlex.split(command), url], capture_output=True, text=True)
     if proc.returncode != 0:
         logger.error(
-            "Error using %s to map url %s. Error: ", command, url, proc.stdout + proc.stderr
+            "Error using %s to map url %s. Error: %s ", command, url, proc.stdout + proc.stderr
         )
-        return None
-    return proc.stdout
+    return proc.returncode, proc.stdout + proc.stderr
 
 
 def download_file(download_id, url, directory):
     thread_session = Session()
     logger.info("Starting download: %s to %s", url, directory)
     speed = None
+    download_record = thread_session.query(Download).get(download_id)
+    assert download_record, f"download record with {download_id} not found"
 
     try:
         for pattern, map_program in config["daemon"]["mapper"].items():
             if pattern in url:
-                mapped_url = launch_cmd(map_program, url)
-                if mapped_url is not None:
-                    url = mapped_url
+                retcode, retval = launch_cmd(map_program, url)
+                if retcode != 0:
+                    download_record.error = retval
+                    download_record.status = "failed"
+                    thread_session.commit()
+                    return
+                else:
+                    url = retval
                 break
         with requests.get(url, stream=True, allow_redirects=True) as r:
             content_disposition = r.headers.get("Content-Disposition")
@@ -64,7 +70,6 @@ def download_file(download_id, url, directory):
             start_time = time.time()
             last_update_time = start_time
 
-            download_record = thread_session.query(Download).get(download_id)
             download_record.status = "in_progress"
             download_record.total_size = total_length
             thread_session.commit()
