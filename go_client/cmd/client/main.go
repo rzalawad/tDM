@@ -212,18 +212,14 @@ func runTUI() {
 						}
 					}
 					log.Printf("Launching Switch Go Routine")
-					// See: https://github.com/rivo/tview/issues/784 for why it must be a go routine
-					go func() {
-						app.QueueUpdateDraw(func() {
-							pages.RemovePage("concurrency")
-							pages.SwitchToPage("main")
-							app.SetFocus(table)
-							refreshDownloads()
-						})
-					}()
+					pages.RemovePage("concurrency")
+					pages.SwitchToPage("main")
+					app.SetFocus(table)
+					log.Printf("Appview switched to main page")
 				})
 
 			pages.AddPage("concurrency", inputField, true, true)
+			pages.SwitchToPage("concurrency")
 			app.SetFocus(inputField)
 			return nil
 		}
