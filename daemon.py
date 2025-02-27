@@ -68,28 +68,31 @@ def download_file(download_id, url, directory):
             total_length = int(r.headers.get("content-length", 0))
             downloaded = 0
             start_time = time.time()
-            last_update_time = start_time
+            last_commit_time = start_time
 
             download_record.status = "in_progress"
             download_record.total_size = total_length
             thread_session.commit()
+            amount_downloaded_in_interval = 0
 
             with open(local_filename, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1024 * 16):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
+                        amount_downloaded_in_interval += len(chunk)
                         current_time = time.time()
-                        elapsed_time = current_time - start_time
-                        speed = downloaded / elapsed_time / 1024
-                        progress = (downloaded / total_length) * 100 if total_length else 0
 
-                        if current_time - last_update_time >= 1:
+                        if current_time - last_commit_time >= 1:
+                            elapsed_time = current_time - last_commit_time
+                            speed = amount_downloaded_in_interval / elapsed_time / 1024
+                            progress = (downloaded / total_length) * 100 if total_length else 0
                             download_record.downloaded = downloaded
                             download_record.speed = f"{speed:.2f} KB/s"
                             download_record.progress = f"{progress:.2f}%"
                             thread_session.commit()
-                            last_update_time = current_time
+                            last_commit_time = current_time
+                            amount_downloaded_in_interval = 0
 
         status = "completed"
         download_record.downloaded = downloaded
