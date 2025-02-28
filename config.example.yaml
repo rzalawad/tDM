@@ -4,6 +4,7 @@ daemon:
   concurrency: 3
   # mapper:
   #   https://rapidgator.net: python3 ~/create_downloadable_url.py
+  # temporary_download_directory: /some_dir/<folder that might not exist>
 
 server:
   host: 0.0.0.0

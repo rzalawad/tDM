@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import threading
 import time
@@ -16,6 +17,10 @@ from models import DaemonSettings, Download, Session
 
 config = get_config()
 logger = setup_logger("daemon", getattr(logging, config["log_level"].upper(), logging.INFO))
+
+TMP_DOWNLOAD_PATH = config["daemon"].get("temporary_download_directory")
+if TMP_DOWNLOAD_PATH:
+    os.makedirs(TMP_DOWNLOAD_PATH, exist_ok=True)
 
 
 def get_filename_from_cd(content_disposition):
@@ -61,9 +66,9 @@ def download_file(download_id, url, directory):
 
             if not filename:
                 filename = os.path.basename(url)
+            download_path = final_path = os.path.join(directory, filename)
 
             filename = filename.strip("\"'")
-            local_filename = os.path.join(directory, filename)
             r.raise_for_status()
             total_length = int(r.headers.get("content-length", 0))
             downloaded = 0
@@ -75,7 +80,11 @@ def download_file(download_id, url, directory):
             thread_session.commit()
             amount_downloaded_in_interval = 0
 
-            with open(local_filename, "wb") as f:
+            if config["daemon"]["temporary_download_directory"]:
+                download_path = os.path.join(
+                    config["daemon"]["temporary_download_directory"], filename
+                )
+            with open(download_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1024 * 16):
                     if chunk:
                         f.write(chunk)
@@ -100,6 +109,8 @@ def download_file(download_id, url, directory):
         final_speed = downloaded / final_elapsed_time / 1024
         download_record.speed = f"{final_speed:.2f} KB/s"
         download_record.progress = "100%"
+        if download_path != final_path:
+            shutil.move(download_path, final_path)
     except requests.RequestException as e:
         logger.error("Download error for %s: %s", url, e)
         status = "failed"
