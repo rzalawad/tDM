@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+import traceback
 from email.message import EmailMessage
 
 import requests
@@ -114,7 +115,8 @@ def download_file(download_id, url, directory):
     except requests.RequestException as e:
         logger.error("Download error for %s: %s", url, e)
         status = "failed"
-        download_record.error = str(e)
+        error_traceback = traceback.format_exc()
+        download_record.error = f"{str(e)}\n\nTraceback:\n{error_traceback}"
 
     download_record.status = status
     thread_session.commit()
