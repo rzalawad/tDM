@@ -22,6 +22,7 @@ class Download(Base):
     total_size = Column(Integer)
     date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     error = Column(String)
+    gid = Column(String)
 
 
 class DaemonSettings(Base):
