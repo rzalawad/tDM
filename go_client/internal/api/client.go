@@ -22,6 +22,7 @@ type Download struct {
 	DateAdded  string `json:"date_added"`
 	Progress   string `json:"progress"`
 	Error      string `json:"error"`
+	Gid        string `json:"gid"`
 }
 
 func NewClient(baseURL string) *Client {

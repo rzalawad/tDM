@@ -110,6 +110,7 @@ func ShowDetailedView(app *tview.Application, pages *tview.Pages, table *tview.T
 		SetText(fmt.Sprintf(
 			"[yellow]Download Details[-]\n\n"+
 				"[::b]URL:[-]         %s\n"+
+				"[::b]Gid:[-]         %s\n"+
 				"[::b]Status:[-]      %s\n"+
 				"[::b]Directory:[-]   %s\n"+
 				"[::b]Speed:[-]       %s\n"+
@@ -119,6 +120,7 @@ func ShowDetailedView(app *tview.Application, pages *tview.Pages, table *tview.T
 				"[::b]Progress:[-]    %s\n"+
 				"[::b]Error:[-]       %s",
 			table.GetCell(row, 1).Text,
+			download.Gid,
 			table.GetCell(row, 2).Text,
 			table.GetCell(row, 3).Text,
 			table.GetCell(row, 4).Text,
