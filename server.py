@@ -3,7 +3,7 @@ import logging
 from flask import Flask, jsonify, request
 
 from config import get_config
-from daemon import DownloadDaemon
+from daemon import Aria2DownloadDaemon
 from logger_config import setup_logger
 from models import DaemonSettings, Download, Session
 
@@ -81,6 +81,7 @@ def get_download(download_id: int):
             "date_added": download.date_added.strftime("%Y-%m-%d %H:%M:%S"),
             "progress": download.progress or "0%",
             "error": download.error,
+            "gid": download.gid,
         }
     )
 
@@ -144,7 +145,7 @@ if __name__ == "__main__":
     finally:
         session.close()
 
-    daemon = DownloadDaemon()
+    daemon = Aria2DownloadDaemon()
     daemon.start()
     try:
         app.run(host=config["server"]["host"], port=config["server"]["port"])
