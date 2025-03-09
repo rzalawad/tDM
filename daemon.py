@@ -12,8 +12,7 @@ from queue import Empty, Queue
 
 import requests
 
-from config import DaemonConfig
-from models import DaemonSettings, Download, SessionFactory, get_session
+from models import DaemonSettings, Download, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +258,6 @@ class Aria2DownloadDaemon(threading.Thread):
     def __init__(self, daemon_config):
         super().__init__()
         self.running = True
-        self.session_factory = SessionFactory
         self.aria2_client = Aria2JsonRPC()
         self.aria2c_process = None
         self.config = daemon_config
@@ -270,7 +268,7 @@ class Aria2DownloadDaemon(threading.Thread):
         self.move_processor = MoveProcessor()
         self.move_processor.start()
 
-        logger.info("Initialized Aria2DownloadDaemon with MoveProcessor")
+        logger.info("Initialized Aria2DownloadDaemon and MoveProcessor")
 
     def start_aria2c(self):
         logger.info("Starting aria2c RPC server...")
@@ -482,7 +480,6 @@ class MoveProcessor(threading.Thread):
         super().__init__(daemon=True)
         self.queue = Queue()
         self.running = True
-        self.session_factory = SessionFactory
         logger.info("Initialized MoveProcessor")
 
     def run(self):

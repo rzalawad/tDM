@@ -4,7 +4,7 @@ from flask import Flask, jsonify, request
 
 from config import initialize_config
 from daemon import Aria2DownloadDaemon
-from models import DaemonSettings, Download, get_session
+from models import DaemonSettings, Download, get_session, init_db
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -139,6 +139,8 @@ if __name__ == "__main__":
 
     logger.info(f"Server starting in {config.environment.value} environment")
     logger.debug(f"Configuration: {config}")
+
+    init_db(config.database_path)
 
     try:
         with get_session() as session:

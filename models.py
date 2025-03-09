@@ -4,9 +4,8 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from config import get_config
-
 Base = declarative_base()
+_session_factory = None
 
 
 class Download(Base):
@@ -32,16 +31,17 @@ class DaemonSettings(Base):
     concurrency = Column(Integer, default=1)
 
 
-config = get_config()
-engine = create_engine(f"sqlite:///{config.database_path}")
-Base.metadata.create_all(engine)
-SessionFactory = sessionmaker(bind=engine)
+def init_db(db_path):
+    global _session_factory
+    engine = create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(engine)
+    _session_factory = sessionmaker(bind=engine)
 
 
 @contextmanager
 def get_session():
     """Provide a transactional scope around a series of operations."""
-    session = SessionFactory()
+    session = _session_factory()
     try:
         yield session
         session.commit()

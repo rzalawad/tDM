@@ -2,7 +2,7 @@
 # Copy this file to config.yaml and modify as needed
 
 # Application environment: development, testing, or production
-environment: development
+environment: production
 
 # Path to the SQLite database file
 database_path: downloads.db
