@@ -10,7 +10,7 @@ logger = logging.getLogger("config")
 DEFAULT_CONFIG = {
     "database_path": "downloads.db",
     "server": {"host": "0.0.0.0", "port": 54759},
-    "daemon": {"concurrency": 1, "mapper": {}},
+    "daemon": {"concurrency": 1, "mapper": {}, "expire_downloads": "1d"},
 }
 
 

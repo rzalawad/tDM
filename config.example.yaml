@@ -2,6 +2,7 @@ database_path: downloads.db
 
 daemon:
   concurrency: 3
+  expire_downloads: 1d  # Delete downloads older than 1 day
   # mapper:
   #   https://rapidgator.net: python3 ~/create_downloadable_url.py
   # temporary_download_directory: /some_dir/<folder that might not exist>

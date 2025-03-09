@@ -253,10 +253,8 @@ func CreateLayoutWithTable(table *tview.Table, downloads []api.Download, concurr
 
 	keymapText := "[::b]KEYMAPS[::-]\n" +
 		"c: Set Concurrency\n" +
-		"s: Set Max Speed\n" +
 		"p: Pause/Resume\n" +
 		"d: Delete Download\n" +
-		"r: Retry Failed\n" +
 		"q: Quit"
 	keymapView := tview.NewTextView().
 		SetText(keymapText).

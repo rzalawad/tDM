@@ -62,7 +62,9 @@ def get_download(download_id: int):
     try:
         download = session.get(Download, download_id)
         if download is None:
-            return jsonify({"error": f"download id {download_id} not found"}), 500
+            return jsonify(
+                {"error": f"download id {download_id} not found"}
+            ), 500
 
     except Exception as e:
         session.rollback()
@@ -132,14 +134,18 @@ def get_concurrency():
 
 if __name__ == "__main__":
     config = get_config()
-    logger = setup_logger("server", getattr(logging, config["log_level"].upper(), logging.INFO))
+    logger = setup_logger(
+        "server", getattr(logging, config["log_level"].upper(), logging.INFO)
+    )
     logger.info("Configuration loaded: %s", config)
 
     session = Session()
     try:
         daemon_settings = session.query(DaemonSettings).first()
         if not daemon_settings:
-            daemon_settings = DaemonSettings(id=1, concurrency=config["daemon"]["concurrency"])
+            daemon_settings = DaemonSettings(
+                id=1, concurrency=config["daemon"]["concurrency"]
+            )
             session.add(daemon_settings)
             session.commit()
     finally:

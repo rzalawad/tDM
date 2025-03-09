@@ -4,3 +4,4 @@ rich
 readchar
 sqlalchemy
 pyyaml
+pytest
