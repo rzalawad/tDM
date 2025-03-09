@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Integer, String, create_engine
@@ -32,6 +33,20 @@ class DaemonSettings(Base):
 
 
 config = get_config()
-engine = create_engine(f"sqlite:///{config['database_path']}")
+engine = create_engine(f"sqlite:///{config.database_path}")
 Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
+SessionFactory = sessionmaker(bind=engine)
+
+
+@contextmanager
+def get_session():
+    """Provide a transactional scope around a series of operations."""
+    session = SessionFactory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()

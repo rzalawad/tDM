@@ -1,12 +1,37 @@
+# Application Configuration Example
+# Copy this file to config.yaml and modify as needed
+
+# Application environment: development, testing, or production
+environment: development
+
+# Path to the SQLite database file
 database_path: downloads.db
 
-daemon:
-  concurrency: 3
-  expire_downloads: 1d  # Delete downloads older than 1 day
-  # mapper:
-  #   https://rapidgator.net: python3 ~/create_downloadable_url.py
-  # temporary_download_directory: /some_dir/<folder that might not exist>
-
+# Server configuration
 server:
+  # Host to bind the server to (0.0.0.0 for all interfaces)
   host: 0.0.0.0
+  # Port to listen on
   port: 54759
+
+# Daemon configuration
+daemon:
+  # Number of concurrent downloads
+  concurrency: 3
+  # Time to keep downloads before automatic cleanup (format: 1d, 2h, 30m)
+  expire_downloads: 1d
+  # URL mappers for premium download services
+  # Format: domain: command
+  mapper:
+    rapidgator.net: python3 ~/cli_scripts/debrid_api.py
+  # Directory for temporary downloads
+  temporary_download_directory: /media/ridham/945998da-2501-4a8a-be32-012e17820574/tempdir
+
+# Logging configuration
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  # Date format in logs
+  date_format: "%Y-%m-%d %H:%M:%S"
