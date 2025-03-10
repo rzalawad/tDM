@@ -26,6 +26,13 @@ daemon:
     rapidgator.net: python3 ~/cli_scripts/debrid_api.py
   # Directory for temporary downloads
   temporary_download_directory: /media/ridham/945998da-2501-4a8a-be32-012e17820574/tempdir
+  # optionst to aria2 downloader
+  aria2_options:
+    max-connection-per-server: 1
+    # For some reason, this is not working but api call succeeds. However, falloc = "abc" fails
+    # auto-save-interval: 0  # no control file
+    file-allocation: falloc
+
 
 # Logging configuration
 logging:

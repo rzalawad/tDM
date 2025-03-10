@@ -43,6 +43,8 @@ class DaemonConfig:
     expire_downloads: str = "1d"
     mapper: Dict[str, str] = field(default_factory=dict)
     temporary_download_directory: Optional[str] = None
+    aria2_options: Dict[str, str] = field(default_factory=dict)
+
 
     def validate(self):
         """Validate daemon configuration"""

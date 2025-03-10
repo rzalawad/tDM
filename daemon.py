@@ -78,6 +78,7 @@ class Aria2JsonRPC:
             "method": f"aria2.{method}",
             "params": params,
         }
+        logger.debug("Making RPC call to %s with payload %s", self.rpc_url, payload)
 
         try:
             response = requests.post(self.rpc_url, json=payload)
@@ -121,6 +122,7 @@ def handle_download_with_aria2(
     move_queue=None,
     tmp_download_path=None,
     mapper=None,
+    aria2_options={},
 ):
     aria2_client = Aria2JsonRPC()
     logger.info(f"Starting aria2 download: {url} to {directory}")
@@ -156,7 +158,7 @@ def handle_download_with_aria2(
             options = {
                 "dir": download_path,
                 "continue": "true",
-                "max-connection-per-server": "10",
+                **aria2_options,
             }
 
             gid = aria2_client.add_uri(url, options)
@@ -448,6 +450,7 @@ class Aria2DownloadDaemon(threading.Thread):
                         kwargs={
                             "tmp_download_path": self.config.temporary_download_directory,
                             "mapper": self.config.mapper,
+                            "aria2_options": self.config.aria2_options,
                         },
                     ).start()
 
