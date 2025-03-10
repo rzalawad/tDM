@@ -12,7 +12,7 @@ from queue import Empty, Queue
 
 import requests
 
-from models import DaemonSettings, Download, get_session
+from models import DaemonSettings, Download, get_session, session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +38,20 @@ def parse_duration(duration_str):
 
 def launch_cmd(command, url):
     try:
-        cmd_parts = command.split()
-        cmd_parts.append(url)
-        process = subprocess.Popen(
-            cmd_parts, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        command += f" {url}"
+        process = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
         )
-        stdout, stderr = process.communicate()
         if process.returncode != 0:
-            logger.error(f"Command failed: {stderr.decode()}")
-            return None
-        return stdout.decode().strip()
+            logger.error(f"Command failed: {process.stderr.decode()}")
+            return (
+                None,
+                process.stdout.decode() + "\n" + process.stderr.decode(),
+            )
+        return process.stdout.decode().strip(), None
     except Exception as e:
         logger.error(f"Error executing command: {e}")
-        return None
+        return None, str(e) + "\n" + traceback.format_exc()
 
 
 def is_aria2c_running():
@@ -124,7 +125,7 @@ def handle_download_with_aria2(
     aria2_client = Aria2JsonRPC()
     logger.info(f"Starting aria2 download: {url} to {directory}")
 
-    with get_session() as thread_session:
+    with session_scope() as thread_session:
         download_record = thread_session.get(Download, download_id)
         assert (
             download_record
@@ -139,9 +140,9 @@ def handle_download_with_aria2(
                 for pattern, map_program in mapper.items():
                     if pattern in url:
                         logger.info(f"Mapping URL {url} with {map_program}")
-                        mapped_url = launch_cmd(map_program, url)
-                        if not mapped_url:
-                            download_record.error = "URL mapping failed"
+                        mapped_url, err = launch_cmd(map_program, url)
+                        if err:
+                            download_record.error = err
                             download_record.status = "failed"
                             return
                         else:
@@ -166,7 +167,8 @@ def handle_download_with_aria2(
             completed = False
             start_time = time.time()
             while not completed:
-                time.sleep(2)
+                thread_session.commit()
+                time.sleep(1)
 
                 try:
                     status = aria2_client.get_status(gid)
@@ -178,7 +180,6 @@ def handle_download_with_aria2(
                         break
 
                     current_status = status.get("status", "").lower()
-                    download_record.status = current_status
 
                     if not filename and "files" in status and status["files"]:
                         path = status["files"][0].get("path", "")
@@ -204,6 +205,7 @@ def handle_download_with_aria2(
                     if current_status == "complete":
                         download_record.status = "completed"
                         completed = True
+                        download_record.speed = f"{total_length / (time.time() - start_time) / 1024:.1f} KB/s"
 
                         if tmp_download_path and move_queue and filename:
                             source = os.path.join(download_path, filename)
@@ -240,7 +242,7 @@ def handle_download_with_aria2(
         except Exception as e:
             logger.error(f"Error in download process: {e}")
             logger.error(traceback.format_exc())
-            download_record.error = str(e)
+            download_record.error = str(e) + "\n" + traceback.format_exc()
             download_record.status = "failed"
 
             if gid:
@@ -251,7 +253,7 @@ def handle_download_with_aria2(
                         f"Error removing failed download from aria2: {remove_error}"
                     )
 
-    logger.info(f"Download {download_record.status}: {url}")
+        logger.info(f"Download {download_record.status}: {url}")
 
 
 class Aria2DownloadDaemon(threading.Thread):
@@ -268,6 +270,7 @@ class Aria2DownloadDaemon(threading.Thread):
         self.move_processor = MoveProcessor()
         self.move_processor.start()
 
+        self.session = get_session()
         logger.info("Initialized Aria2DownloadDaemon and MoveProcessor")
 
     def start_aria2c(self):
@@ -336,7 +339,7 @@ class Aria2DownloadDaemon(threading.Thread):
             expire_duration = parse_duration(expire_downloads_str)
             cutoff_date = datetime.now(timezone.utc) - expire_duration
 
-            with get_session() as session:
+            with session_scope() as session:
                 old_downloads = (
                     session.query(Download)
                     .filter(Download.date_added < cutoff_date)
@@ -406,23 +409,22 @@ class Aria2DownloadDaemon(threading.Thread):
             last_cleanup_time = datetime.now()
 
             while self.running:
-                with get_session() as session:
-                    pending_downloads = (
-                        session.query(Download)
-                        .filter_by(status="pending")
-                        .all()
-                    )
+                pending_downloads = (
+                    self.session.query(Download)
+                    .filter_by(status="pending")
+                    .all()
+                )
 
-                    try:
-                        daemon_settings = session.query(DaemonSettings).first()
-                        concurrency = (
-                            daemon_settings.concurrency
-                            if daemon_settings
-                            else self.config.concurrency
-                        )
-                    except Exception as e:
-                        logger.error(f"Error fetching daemon settings: {e}")
-                        concurrency = self.config.concurrency
+                try:
+                    daemon_settings = self.session.query(DaemonSettings).first()
+                    concurrency = (
+                        daemon_settings.concurrency
+                        if daemon_settings
+                        else self.config.concurrency
+                    )
+                except Exception as e:
+                    logger.error(f"Error fetching daemon settings: {e}")
+                    concurrency = self.config.concurrency
 
                 try:
                     stats = self.aria2_client.get_global_stat()
@@ -433,6 +435,8 @@ class Aria2DownloadDaemon(threading.Thread):
                     available_slots = 0
 
                 for download in pending_downloads[:available_slots]:
+                    download.status = "submitted"
+                    self.session.commit()
                     threading.Thread(
                         target=handle_download_with_aria2,
                         args=(
@@ -445,7 +449,6 @@ class Aria2DownloadDaemon(threading.Thread):
                             "tmp_download_path": self.config.temporary_download_directory,
                             "mapper": self.config.mapper,
                         },
-                        daemon=True,
                     ).start()
 
                 if (datetime.now() - last_cleanup_time).total_seconds() >= 3600:
@@ -477,7 +480,7 @@ class MoveTask:
 
 class MoveProcessor(threading.Thread):
     def __init__(self):
-        super().__init__(daemon=True)
+        super().__init__()
         self.queue = Queue()
         self.running = True
         logger.info("Initialized MoveProcessor")
@@ -504,7 +507,7 @@ class MoveProcessor(threading.Thread):
                             f"Successfully moved file: {task.source} -> {task.destination}"
                         )
 
-                        with get_session() as session:
+                        with session_scope() as session:
                             download = session.get(Download, task.download_id)
                             if download:
                                 download.status = "completed"

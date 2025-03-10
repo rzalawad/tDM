@@ -4,7 +4,7 @@ from flask import Flask, jsonify, request
 
 from config import initialize_config
 from daemon import Aria2DownloadDaemon
-from models import DaemonSettings, Download, get_session, init_db
+from models import DaemonSettings, Download, session_scope, init_db
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ def download_file():
     directory = data.get("directory", ".")
 
     try:
-        with get_session() as session:
+        with session_scope() as session:
             logger.info("Inserting download request into database")
             new_download = Download(
                 url=url, directory=directory, status="pending"
@@ -38,7 +38,7 @@ def update_concurrency():
         return jsonify({"error": "Invalid concurrency value"}), 400
 
     try:
-        with get_session() as session:
+        with session_scope() as session:
             daemon_settings = (
                 session.query(DaemonSettings).filter_by(id=1).first()
             )
@@ -58,7 +58,7 @@ def update_concurrency():
 @app.route("/download/<int:download_id>", methods=["GET"])
 def get_download(download_id: int):
     try:
-        with get_session() as session:
+        with session_scope() as session:
             download = session.get(Download, download_id)
             if download is None:
                 return jsonify(
@@ -92,7 +92,7 @@ def get_download(download_id: int):
 @app.route("/downloads", methods=["GET"])
 def get_downloads():
     try:
-        with get_session() as session:
+        with session_scope() as session:
             downloads = (
                 session.query(Download).order_by(Download.id.desc()).all()
             )
@@ -108,6 +108,9 @@ def get_downloads():
                         "date_added": download.date_added.isoformat()
                         if download.date_added
                         else None,
+                        "speed": download.speed,
+                        "downloaded": download.downloaded,
+                        "total_size": download.total_size,
                         "error": download.error,
                         "progress": download.progress,
                     }
@@ -121,7 +124,7 @@ def get_downloads():
 @app.route("/settings/concurrency", methods=["GET"])
 def get_concurrency():
     try:
-        with get_session() as session:
+        with session_scope() as session:
             daemon_settings = (
                 session.query(DaemonSettings).filter_by(id=1).first()
             )
@@ -143,7 +146,7 @@ if __name__ == "__main__":
     init_db(config.database_path)
 
     try:
-        with get_session() as session:
+        with session_scope() as session:
             daemon_settings = session.query(DaemonSettings).first()
             if not daemon_settings:
                 logger.info(

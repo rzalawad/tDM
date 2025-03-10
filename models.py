@@ -38,8 +38,11 @@ def init_db(db_path):
     _session_factory = sessionmaker(bind=engine)
 
 
-@contextmanager
 def get_session():
+    return _session_factory()
+
+@contextmanager
+def session_scope():
     """Provide a transactional scope around a series of operations."""
     session = _session_factory()
     try:
