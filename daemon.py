@@ -411,6 +411,7 @@ class Aria2DownloadDaemon(threading.Thread):
             last_cleanup_time = datetime.now()
 
             while self.running:
+                self.session.expire_all()
                 pending_downloads = (
                     self.session.query(Download)
                     .filter_by(status="pending")

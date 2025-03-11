@@ -41,6 +41,7 @@ def init_db(db_path):
 def get_session():
     return _session_factory()
 
+
 @contextmanager
 def session_scope():
     """Provide a transactional scope around a series of operations."""
