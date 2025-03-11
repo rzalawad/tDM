@@ -22,7 +22,10 @@ support in `rich` library
 - Manage group downloads
 - Add unit tests for server, daemon, and client components.
 - Allow group downloads + <abstract group task> (unrar, 7z, etc)
-- Allow cleaner exit behavior when aria2c is downloading
+- Aria2 getting stuck (api calls using curl also get stuck) 
+- Handle cleaner exit behavior when aria2c is downloading
+    * downloader threads don't shutdown on exit resulting in ctrl-c getting stuck thus requiring
+      another ctrl-c
 - Delete downloads from UI
 - Handle downloads with multiple files / uris
 - Handle torrents
