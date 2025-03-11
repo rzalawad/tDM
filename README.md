@@ -19,8 +19,10 @@ support in `rich` library
 - **Go Client**: Enhanced with features for setting concurrency and displaying current settings.
 
 ## TODO
-- Add error handling and retry logic for failed downloads.
-- Add unit tests for server, daemon, and client components.
 - Manage group downloads
-- Create mapper for urls to convert say filehoster urls to downloadable urls
+- Add unit tests for server, daemon, and client components.
 - Allow group downloads + <abstract group task> (unrar, 7z, etc)
+- Allow cleaner exit behavior when aria2c is downloading
+- Delete downloads from UI
+- Handle downloads with multiple files / uris
+- Handle torrents
