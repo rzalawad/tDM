@@ -30,6 +30,27 @@ def download_file():
         return jsonify({"error": "Failed to insert download request"}), 500
 
 
+@app.route("/delete/<int:download_id>", methods=["DELETE"])
+def delete_download_rest(download_id: int):
+    try:
+        with session_scope() as session:
+            logger.info(f"Deleting download {download_id} via DELETE method")
+            download = session.get(Downloads, download_id)
+            if download:
+                session.delete(download)
+            else:
+                return jsonify(
+                    {"error": f"Download {download_id} not found"}
+                ), 404
+
+        return jsonify(
+            {"message": "Delete request processed successfully"}
+        ), 200
+    except Exception as e:
+        logger.error(f"Error deleting download: {e}")
+        return jsonify({"error": "Failed to delete download"}), 500
+
+
 @app.route("/settings/concurrency", methods=["PUT"])
 def update_concurrency():
     data = request.json
