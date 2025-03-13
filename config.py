@@ -36,6 +36,35 @@ class ServerConfig:
 
 
 @dataclass
+class Aria2Config:
+    """Configuration for launching aria2c in JSON-RPC mode."""
+
+    port: int = 6800
+    secret: Optional[str] = None
+    log: str = "/tmp/aria2.log"
+    download_options: Dict[str, str] = field(default_factory=dict)
+
+    def build_command(self):
+        """
+        Build the command-line arguments for launching aria2c with JSON-RPC enabled.
+        If a secret token is provided, include it; otherwise, omit it.
+        """
+        cmd = [
+            "aria2c",
+            "--enable-rpc",
+            "--daemon=true",
+            "--rpc-listen-all=true",
+            "--rpc-allow-origin-all",
+            f"--log={self.log}",
+            f"--rpc-listen-port={self.port}",
+        ]
+        if self.secret:
+            cmd.append(f"--rpc-secret={self.secret}")
+
+        return cmd
+
+
+@dataclass
 class DaemonConfig:
     """Daemon configuration settings"""
 
@@ -43,8 +72,7 @@ class DaemonConfig:
     expire_downloads: str = "1d"
     mapper: Dict[str, str] = field(default_factory=dict)
     temporary_download_directory: Optional[str] = None
-    aria2_options: Dict[str, str] = field(default_factory=dict)
-
+    aria2: Aria2Config = field(default_factory=Aria2Config)
 
     def validate(self):
         """Validate daemon configuration"""
@@ -60,6 +88,29 @@ class DaemonConfig:
                 )
 
         return True
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "DaemonConfig":
+        """Create a DaemonConfig from a dictionary"""
+        if not config_dict:
+            return cls()
+
+        aria2_config = None
+        if "aria2" in config_dict:
+            aria2_config = Aria2Config(**config_dict.pop("aria2", {}))
+
+        instance = cls(
+            **{
+                k: v
+                for k, v in config_dict.items()
+                if k in cls.__dataclass_fields__
+            }
+        )
+
+        if aria2_config:
+            instance.aria2 = aria2_config
+
+        return instance
 
 
 @dataclass
@@ -98,9 +149,9 @@ class AppConfig:
     def from_dict(cls, config_dict: Dict[str, Any]) -> "AppConfig":
         """Create a configuration object from a dictionary"""
         # Extract nested configs
-        server_dict = config_dict.get("server", {})
-        daemon_dict = config_dict.get("daemon", {})
-        logging_dict = config_dict.get("logging", {})
+        server_dict = config_dict.get("server", None)
+        daemon_dict = config_dict.get("daemon", None)
+        logging_dict = config_dict.get("logging", None)
 
         # Create the config object
         return cls(
@@ -111,7 +162,7 @@ class AppConfig:
             server=ServerConfig(**server_dict)
             if server_dict
             else ServerConfig(),
-            daemon=DaemonConfig(**daemon_dict)
+            daemon=DaemonConfig.from_dict(daemon_dict)
             if daemon_dict
             else DaemonConfig(),
             logging=LoggingConfig(**logging_dict)

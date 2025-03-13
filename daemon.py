@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -12,7 +13,8 @@ from queue import Empty, Queue
 
 import requests
 
-from models import DaemonSettings, Download, get_session, session_scope
+from config import DaemonConfig
+from models import DaemonSettings, Downloads, get_session, session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,9 @@ class Aria2JsonRPC:
             "method": f"aria2.{method}",
             "params": params,
         }
-        logger.debug("Making RPC call to %s with payload %s", self.rpc_url, payload)
+        logger.debug(
+            "Making RPC call to %s with payload %s", self.rpc_url, payload
+        )
 
         try:
             response = requests.post(self.rpc_url, json=payload)
@@ -259,7 +263,7 @@ def handle_download_with_aria2(
 
 
 class Aria2DownloadDaemon(threading.Thread):
-    def __init__(self, daemon_config):
+    def __init__(self, daemon_config: DaemonConfig):
         super().__init__()
         self.running = True
         self.aria2_client = Aria2JsonRPC()
@@ -276,47 +280,21 @@ class Aria2DownloadDaemon(threading.Thread):
         logger.info("Initialized Aria2DownloadDaemon and MoveProcessor")
 
     def start_aria2c(self):
-        logger.info("Starting aria2c RPC server...")
-
-        cmd = [
-            "aria2c",
-            "--enable-rpc",
-            "--rpc-listen-all=true",
-            "--rpc-allow-origin-all",
-        ]
-
+        if is_aria2c_running():
+            return
+        cmd = self.config.aria2.build_command()
         try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                preexec_fn=os.setpgrp if os.name != "nt" else None,
+            _ = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
             )
-
-            logger.info(f"Started aria2c RPC server with PID {process.pid}")
-            time.sleep(1)
-
-            if process.poll() is not None:
-                stdout, stderr = process.communicate()
-                logger.error(f"aria2c failed to start: {stderr.decode()}")
-                return None
-
-            for i in range(5):
-                if is_aria2c_running():
-                    logger.info(
-                        "aria2c RPC server successfully started and verified"
-                    )
-                    return process
-                else:
-                    time.sleep(0.5 * (i + 1))
-
-            logger.error("aria2c started but RPC server failed to respond")
-            process.terminate()
-            return None
-
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
             logger.error(f"Failed to start aria2c: {e}")
-            return None
+            logger.error(f"Command: {e.cmd}")
+            logger.error(f"Return code: {e.returncode}")
+            logger.error(f"stdout: {e.stdout.decode() if e.stdout else ''}")
+            logger.error(f"stderr: {e.stderr.decode() if e.stderr else ''}")
+            sys.exit(1)
+        return None
 
     def cleanup_aria2c(self):
         if self.aria2c_process is not None:
@@ -451,7 +429,7 @@ class Aria2DownloadDaemon(threading.Thread):
                         kwargs={
                             "tmp_download_path": self.config.temporary_download_directory,
                             "mapper": self.config.mapper,
-                            "aria2_options": self.config.aria2_options,
+                            "aria2_options": self.config.aria2.download_options,
                         },
                     ).start()
 
