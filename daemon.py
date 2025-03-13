@@ -367,24 +367,7 @@ class Aria2DownloadDaemon(threading.Thread):
 
     def run(self):
         try:
-            self.aria2c_process = self.start_aria2c()
-
-            if self.aria2c_process:
-
-                def cleanup_this_process():
-                    if self.aria2c_process:
-                        logger.info(
-                            f"Cleaning up aria2c process {self.aria2c_process.pid}"
-                        )
-                        self.cleanup_aria2c()
-
-                atexit.register(cleanup_this_process)
-
-            if not self.aria2c_process and not is_aria2c_running():
-                logger.error(
-                    "Failed to ensure aria2c is running. Daemon will not start."
-                )
-                return
+            self.start_aria2c()
 
             last_cleanup_time = datetime.now()
 
