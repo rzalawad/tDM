@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -139,4 +140,25 @@ func (c *Client) GetConcurrency() (int, error) {
 	}
 
 	return concurrency, nil
+}
+
+func (c *Client) DeleteDownload(id int) error {
+	log.Printf("Deleting Download: %d", id)
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/delete/%d", c.baseURL, id), nil)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	return nil
 }

@@ -91,6 +91,77 @@ func submitDownload(url, directory string) {
 	fmt.Printf("Download request for %s will be saved to %s\n", url, absPath)
 }
 
+func showDeleteDownloadConfirmation(app *tview.Application, pages *tview.Pages, table *tview.Table, row int, mainInputCapture func(event *tcell.EventKey) *tcell.EventKey) {
+
+	apiClient := api.NewClient("http://localhost:54759")
+	downloadId, err_conv := strconv.Atoi(table.GetCell(row, 0).Text)
+	if err_conv != nil {
+		log.Printf("Can't convert string to int: %d", table.GetCell(row, 0).Text)
+		return
+	}
+	download, err := apiClient.FetchDownload(downloadId)
+	if err != nil {
+		log.Printf("Can't get download for downloadId: %d", downloadId)
+		return
+	}
+
+	form := tview.NewForm().AddTextView(
+		"",
+		fmt.Sprintf(
+			"[red]Confirm Download Delete? (Y/N)[-]\n\n"+
+				"[::b]URL:[-]         %s\n"+
+				"[::b]Gid:[-]         %s\n"+
+				"[::b]Status:[-]      %s\n"+
+				"[::b]Directory:[-]   %s\n"+
+				"[::b]Speed:[-]       %s\n"+
+				"[::b]Downloaded:[-]  %s\n"+
+				"[::b]Total Size:[-]  %s\n"+
+				"[::b]Date Added:[-]  %s\n"+
+				"[::b]Progress:[-]    %s\n"+
+				"[::b]Error:[-]       %s",
+			table.GetCell(row, 1).Text,
+			download.Gid,
+			table.GetCell(row, 2).Text,
+			table.GetCell(row, 3).Text,
+			table.GetCell(row, 4).Text,
+			table.GetCell(row, 5).Text,
+			table.GetCell(row, 6).Text,
+			table.GetCell(row, 7).Text,
+			table.GetCell(row, 8).Text,
+			download.Error,
+		), 0, 400, true, true)
+	form.SetBorder(true).SetTitle("Delete Download?")
+
+	pages.AddPage("delete", form, true, true)
+	pages.SwitchToPage("delete")
+
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape ||
+			event.Rune() == 'n' ||
+			event.Rune() == 'N' ||
+			event.Rune() == 'q' ||
+			event.Rune() == 'Q' {
+			pages.RemovePage("delete")
+			pages.SwitchToPage("main")
+			app.SetInputCapture(mainInputCapture)
+			return nil
+		}
+		if event.Rune() == 'y' || event.Rune() == 'Y' {
+			downloadId, err_conv := strconv.Atoi(table.GetCell(row, 0).Text)
+			if err_conv == nil {
+				apiClient.DeleteDownload(downloadId)
+			} else {
+				log.Printf("Can't convert string to int: %d", table.GetCell(row, 0).Text)
+			}
+			pages.RemovePage("delete")
+			pages.SwitchToPage("main")
+			app.SetInputCapture(mainInputCapture)
+			return nil
+		}
+		return event
+	})
+}
+
 func runTUI() {
 	logDir := "/tmp/download-manager-client"
 	err := os.MkdirAll(logDir, 0755)
@@ -178,6 +249,16 @@ func runTUI() {
 			if row > 0 { // Ignore header row
 				log.Printf("Showing detailed view for row: %d", row)
 				ui.ShowDetailedView(app, pages, table, row, mainInputCapture)
+				return nil
+			}
+		}
+
+		if event.Rune() == 'd' || event.Rune() == 'D' {
+			row, _ := table.GetSelection()
+			log.Printf("Enter pressed on row: %d", row)
+			if row > 0 { // Ignore header row
+				log.Printf("Prompting to delete download: %d", row)
+				showDeleteDownloadConfirmation(app, pages, table, row, mainInputCapture)
 				return nil
 			}
 		}
