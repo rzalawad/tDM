@@ -42,6 +42,6 @@ logging:
   # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: INFO
   # Log format
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  format: "%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s"
   # Date format in logs
   date_format: "%Y-%m-%d %H:%M:%S"
