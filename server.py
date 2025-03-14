@@ -4,7 +4,14 @@ from flask import Flask, jsonify, request
 
 from config import initialize_config
 from daemon import Aria2DownloadDaemon
-from models import DaemonSettings, Download, Group, session_scope, init_db
+from models import (
+    DaemonSettings,
+    Download,
+    Group,
+    TaskType,
+    init_db,
+    session_scope,
+)
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -21,12 +28,25 @@ def download_file():
         return jsonify({"error": "No URLs provided"}), 400
 
     directory = data.get("directory", ".")
-    task = data.get("task")
+    task_value = data.get("task")
+
+    # Convert task string to TaskType enum if provided
+    task_enum = None
+    if task_value:
+        try:
+            task_enum = TaskType(task_value)
+        except ValueError:
+            valid_tasks = [t.value for t in TaskType]
+            return jsonify(
+                {
+                    "error": f"Invalid task type. Must be one of: {', '.join(valid_tasks)}"
+                }
+            ), 400
 
     try:
         with session_scope() as session:
-            logger.info(f"Creating download group with task: {task}")
-            new_group = Group(task=task)
+            logger.info(f"Creating download group with task: {task_value}")
+            new_group = Group(task=task_enum)
             session.add(new_group)
             session.flush()
 
@@ -104,6 +124,10 @@ def get_download(download_id: int):
                     {"error": f"Download id {download_id} not found"}
                 ), 404
 
+            group_task = None
+            if download.group and download.group.task:
+                group_task = download.group.task.value
+
             return jsonify(
                 {
                     "id": download.id,
@@ -122,9 +146,7 @@ def get_download(download_id: int):
                     "error": download.error,
                     "gid": download.gid,
                     "group_id": download.group_id,
-                    "group_task": download.group.task
-                    if download.group
-                    else None,
+                    "group_task": group_task,
                 }
             ), 200
     except Exception as e:
@@ -141,6 +163,10 @@ def get_downloads():
             )
             result = []
             for download in downloads:
+                group_task = None
+                if download.group and download.group.task:
+                    group_task = download.group.task.value
+
                 result.append(
                     {
                         "id": download.id,
@@ -157,9 +183,7 @@ def get_downloads():
                         "error": download.error,
                         "progress": download.progress,
                         "group_id": download.group_id,
-                        "group_task": download.group.task
-                        if download.group
-                        else None,
+                        "group_task": group_task,
                     }
                 )
             return jsonify(result), 200

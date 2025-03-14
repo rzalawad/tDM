@@ -9,17 +9,26 @@ from sqlalchemy import (
     String,
     create_engine,
 )
+from sqlalchemy import (
+    Enum as SQLAEnum,
+)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
 _session_factory = None
 
 
+class TaskType(Enum):
+    UNPACK = "unpack"
+
+
 class Group(Base):
     __tablename__ = "groups"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    task = Column(String)
+    task = Column(SQLAEnum(TaskType), nullable=True)
+    status = Column(String)
+    error = Column(String)
 
     downloads = relationship("Download", back_populates="group")
 
@@ -35,8 +44,8 @@ class Download(Base):
     progress = Column(String)
     downloaded = Column(Integer)
     total_size = Column(Integer)
-    date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     error = Column(String)
+    date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     gid = Column(String)
     group_id = Column(Integer, ForeignKey("groups.id"))
 
