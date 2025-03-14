@@ -17,34 +17,42 @@ import (
 )
 
 func main() {
+	apiClient := api.NewClient("http://localhost:54759")
 	var rootCmd = &cobra.Command{
 		Use:   "client",
 		Short: "Download Manager Client",
 		Run: func(cmd *cobra.Command, args []string) {
-			runTUI()
+			runTUI(apiClient)
 		},
 	}
 
+	var directoryFlag string
+	var taskFlag string
 	var addCmd = &cobra.Command{
-		Use:   "add <url> [directory]",
-		Short: "Add a new download",
+		Use:   "add <url> [url2] [url3] ...",
+		Short: "Add one or more downloads",
+		Long:  "Add one or more URLs to the download queue. All URLs will be downloaded to the specified directory.",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			url := args[0]
-			directory := "."
-			if len(args) > 1 {
-				directory = args[1]
+			directory := directoryFlag
+			if directory == "" {
+				directory = "."
 			}
-			submitDownload(url, directory)
+			
+			err := submitDownloads(apiClient, args, directory, taskFlag)
+			if err != nil {
+				log.Fatalf("Failed to submit downloads: %v", err)
+			}
 		},
 	}
+	addCmd.Flags().StringVarP(&directoryFlag, "directory", "d", "", "Directory to save downloads (default: current directory)")
+	addCmd.Flags().StringVarP(&taskFlag, "task", "t", "", "Task name for grouping related downloads")
 
 	var concurrencyCmd = &cobra.Command{
 		Use:   "concurrency <value>",
 		Short: "Set or view download concurrency",
 		Args:  cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			apiClient := api.NewClient("http://localhost:54759")
 
 			if len(args) == 0 {
 				concurrency, err := apiClient.GetConcurrency()
@@ -77,18 +85,24 @@ func main() {
 	}
 }
 
-func submitDownload(url, directory string) {
+func submitDownloads(apiClient *api.Client, urls []string, directory string, task string) error {
 	absPath, err := filepath.Abs(directory)
 	if err != nil {
-		log.Fatalf("Failed to resolve absolute path: %v", err)
+		return fmt.Errorf("failed to resolve absolute path: %v", err)
 	}
 
-	apiClient := api.NewClient("http://localhost:54759")
-	err = apiClient.SubmitDownload(url, absPath)
+	err = apiClient.SubmitDownloads(urls, absPath, task)
 	if err != nil {
-		log.Fatalf("Failed to submit download: %v", err)
+		return fmt.Errorf("failed to submit downloads: %v", err)
 	}
-	fmt.Printf("Download request for %s will be saved to %s\n", url, absPath)
+	
+	if len(urls) == 1 {
+		fmt.Printf("Download request for %s will be saved to %s\n", urls[0], absPath)
+	} else {
+		fmt.Printf("Download request for %d URLs will be saved to %s\n", len(urls), absPath)
+	}
+	
+	return nil
 }
 
 func showDeleteDownloadConfirmation(app *tview.Application, pages *tview.Pages, table *tview.Table, row int, mainInputCapture func(event *tcell.EventKey) *tcell.EventKey) {
@@ -162,7 +176,7 @@ func showDeleteDownloadConfirmation(app *tview.Application, pages *tview.Pages, 
 	})
 }
 
-func runTUI() {
+func runTUI(apiClient *api.Client) {
 	logDir := "/tmp/download-manager-client"
 	err := os.MkdirAll(logDir, 0755)
 	if err != nil {
@@ -183,8 +197,6 @@ func runTUI() {
 	log.Println("Starting Download Manager Client TUI")
 
 	app := tview.NewApplication()
-	// TODO: allow argument passing
-	apiClient := api.NewClient("http://localhost:54759")
 
 	concurrency, err := apiClient.GetConcurrency()
 	if err != nil {

@@ -4,7 +4,7 @@ from flask import Flask, jsonify, request
 
 from config import initialize_config
 from daemon import Aria2DownloadDaemon
-from models import DaemonSettings, Download, session_scope, init_db
+from models import DaemonSettings, Download, Group, session_scope, init_db
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -14,17 +14,35 @@ logger = logging.getLogger(__name__)
 def download_file():
     data = request.json
     logger.info("Received download request: %s", data)
-    url = data.get("url")
+
+    urls = data.get("urls", [])
+
+    if not urls:
+        return jsonify({"error": "No URLs provided"}), 400
+
     directory = data.get("directory", ".")
+    task = data.get("task")
 
     try:
         with session_scope() as session:
-            logger.info("Inserting download request into database")
-            new_download = Download(
-                url=url, directory=directory, status="pending"
-            )
-            session.add(new_download)
-        return jsonify({"message": "Download request received"}), 201
+            logger.info(f"Creating download group with task: {task}")
+            new_group = Group(task=task)
+            session.add(new_group)
+            session.flush()
+
+            for url in urls:
+                logger.info(f"Adding download for URL: {url}")
+                new_download = Download(
+                    url=url,
+                    directory=directory,
+                    status="pending",
+                    group_id=new_group.id,
+                )
+                session.add(new_download)
+
+        return jsonify(
+            {"message": f"Download request with {len(urls)} URL(s) received"}
+        ), 201
     except Exception as e:
         logger.error(f"Error inserting download: {e}")
         return jsonify({"error": "Failed to insert download request"}), 500
@@ -35,7 +53,7 @@ def delete_download_rest(download_id: int):
     try:
         with session_scope() as session:
             logger.info(f"Deleting download {download_id} via DELETE method")
-            download = session.get(Downloads, download_id)
+            download = session.get(Download, download_id)
             if download:
                 session.delete(download)
             else:
@@ -103,6 +121,10 @@ def get_download(download_id: int):
                     "progress": download.progress or "0%",
                     "error": download.error,
                     "gid": download.gid,
+                    "group_id": download.group_id,
+                    "group_task": download.group.task
+                    if download.group
+                    else None,
                 }
             ), 200
     except Exception as e:
@@ -134,6 +156,10 @@ def get_downloads():
                         "total_size": download.total_size,
                         "error": download.error,
                         "progress": download.progress,
+                        "group_id": download.group_id,
+                        "group_task": download.group.task
+                        if download.group
+                        else None,
                     }
                 )
             return jsonify(result), 200

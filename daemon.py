@@ -14,7 +14,7 @@ from queue import Empty, Queue
 import requests
 
 from config import DaemonConfig
-from models import DaemonSettings, Downloads, get_session, session_scope
+from models import DaemonSettings, Download, get_session, session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +133,9 @@ def handle_download_with_aria2(
 
     with session_scope() as thread_session:
         download_record = thread_session.get(Download, download_id)
-        assert (
-            download_record
-        ), f"Download record with ID {download_id} not found"
+        assert download_record, (
+            f"Download record with ID {download_id} not found"
+        )
 
         gid = None
         download_path = directory

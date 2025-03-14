@@ -68,11 +68,16 @@ func (c *Client) FetchDownload(id int) (Download, error) {
 	return download, nil
 }
 
-func (c *Client) SubmitDownload(url, directory string) error {
-	downloadRequest := map[string]string{
-		"url":       url,
+func (c *Client) SubmitDownloads(urls []string, directory string, task string) error {
+	downloadRequest := map[string]interface{}{
+		"urls":      urls,
 		"directory": directory,
 	}
+	
+	if task != "" {
+		downloadRequest["task"] = task
+	}
+	
 	jsonData, err := json.Marshal(downloadRequest)
 	if err != nil {
 		return err
@@ -85,11 +90,12 @@ func (c *Client) SubmitDownload(url, directory string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed to submit download, status code: %d", resp.StatusCode)
+		return fmt.Errorf("failed to submit downloads, status code: %d", resp.StatusCode)
 	}
 
 	return nil
 }
+
 func (c *Client) UpdateConcurrency(concurrency int) error {
 	concurrencyRequest := map[string]int{
 		"concurrency": concurrency,
@@ -118,6 +124,7 @@ func (c *Client) UpdateConcurrency(concurrency int) error {
 
 	return nil
 }
+
 func (c *Client) GetConcurrency() (int, error) {
 	resp, err := http.Get(fmt.Sprintf("%s/settings/concurrency", c.baseURL))
 	if err != nil {

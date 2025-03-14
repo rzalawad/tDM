@@ -1,11 +1,27 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Integer, String, create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    create_engine,
+)
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
 _session_factory = None
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task = Column(String)
+
+    downloads = relationship("Download", back_populates="group")
 
 
 class Download(Base):
@@ -22,6 +38,9 @@ class Download(Base):
     date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     error = Column(String)
     gid = Column(String)
+    group_id = Column(Integer, ForeignKey("groups.id"))
+
+    group = relationship("Group", back_populates="downloads")
 
 
 class DaemonSettings(Base):
