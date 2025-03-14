@@ -32,13 +32,26 @@ class Status(Enum):
     MOVING = "moving"
     UNPACKING = "unpacking"
 
+TASK_TYPE_TO_STATUS = {
+    TaskType.UNPACK: Status.UNPACKING,
+    TaskType.MOVE: Status.MOVING,
+}
+STATUS_TO_TASK_TYPE = {
+    v: k for k, v in TASK_TYPE_TO_STATUS.items()
+}
+
+class GroupStatus(Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
 
 class Group(Base):
     __tablename__ = "groups"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     task = Column(SQLAEnum(TaskType), nullable=True)
-    status = Column(String)
+    status = Column(SQLAEnum(GroupStatus), nullable=False)
     error = Column(String)
 
     downloads = relationship("Download", back_populates="group")
