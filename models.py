@@ -23,6 +23,16 @@ class TaskType(Enum):
     UNPACK = "unpack"
 
 
+class Status(Enum):
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    DOWNLOADING = "downloading"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    MOVING = "moving"
+    UNPACKING = "unpacking"
+
+
 class Group(Base):
     __tablename__ = "groups"
 
@@ -40,7 +50,7 @@ class Download(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     url = Column(String, nullable=False)
     directory = Column(String, nullable=False)
-    status = Column(String, nullable=False)
+    status = Column(SQLAEnum(Status), nullable=False)
     speed = Column(String)
     progress = Column(String)
     downloaded = Column(Integer)

@@ -8,6 +8,7 @@ from models import (
     DaemonSettings,
     Download,
     Group,
+    Status,
     TaskType,
     init_db,
     session_scope,
@@ -55,7 +56,7 @@ def download_file():
                 new_download = Download(
                     url=url,
                     directory=directory,
-                    status="pending",
+                    status=Status.PENDING,
                     group_id=new_group.id,
                 )
                 session.add(new_download)
@@ -133,7 +134,7 @@ def get_download(download_id: int):
                     "id": download.id,
                     "url": download.url,
                     "directory": download.directory,
-                    "status": download.status,
+                    "status": download.status.value,
                     "speed": download.speed or "N/A",
                     "downloaded": download.downloaded or 0,
                     "total_size": download.total_size or 0,
@@ -172,7 +173,7 @@ def get_downloads():
                         "id": download.id,
                         "url": download.url,
                         "directory": download.directory,
-                        "status": download.status,
+                        "status": download.status.value,
                         "gid": download.gid,
                         "date_added": download.date_added.isoformat()
                         if download.date_added
