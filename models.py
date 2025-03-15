@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy import (
@@ -70,6 +71,10 @@ class Task(Base):
     error = Column(String)
 
     group = relationship("Group", back_populates="tasks")
+
+    __table_args__ = (
+        UniqueConstraint("group_id", "task_type", name="_group_task_type_uc"),
+    )
 
 
 class Download(Base):
