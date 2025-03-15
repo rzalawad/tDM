@@ -1,0 +1,12 @@
+[project]
+name = "tdm"
+version = "0.1.0"
+description = "tDM: A terminal based download manager"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.1.0",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
+    "sqlalchemy>=2.0.39",
+]

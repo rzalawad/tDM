@@ -1,7 +1,5 @@
 Flask
 requests
-rich
-readchar
 sqlalchemy
 pyyaml
 pytest

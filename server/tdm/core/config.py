@@ -1,4 +1,3 @@
-import argparse
 import logging
 import os
 import sys
@@ -203,7 +202,7 @@ class ConfigManager:
         return cls._instance
 
     def load_config(
-        self, config_path: Optional[str] = None, env_var: str = "CONFIG_PATH"
+        self, config_path: Optional[str] = None, env_var: str = "TDM_CONFIG_PATH"
     ) -> AppConfig:
         """Load configuration from file and environment variables"""
         # Try to get config path from argument or environment variable
@@ -211,7 +210,7 @@ class ConfigManager:
 
         # Start with default configuration
         config_dict = {
-            "environment": os.getenv("APP_ENV", "development"),
+            "environment": os.getenv("TDM_APP_ENV", "development"),
             "database_path": "downloads.db",
             "server": {"host": "0.0.0.0", "port": 54759},
             "daemon": {
@@ -275,44 +274,15 @@ def configure_logging(config: LoggingConfig) -> None:
     root_logger.addHandler(console_handler)
 
 
-def parse_args():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="Server and Daemon Configuration"
-    )
-    parser.add_argument("--config", type=str, help="Path to configuration file")
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        help="Set the logging level (e.g., DEBUG, INFO, WARNING)",
-    )
-    parser.add_argument(
-        "--env",
-        type=str,
-        choices=["development", "testing", "production"],
-        help="Application environment",
-    )
-    return parser.parse_args()
-
 
 # Global config manager instance
 config_manager = ConfigManager()
 
 
-def initialize_config():
-    """Initialize configuration from command line arguments and environment variables"""
-    args = parse_args()
+def initialize_config(config_path: Optional[str] = None):
+    """Initialize configuration from config file"""
 
-    # Override environment variables with command line arguments if provided
-    if args.log_level:
-        os.environ["LOG_LEVEL"] = args.log_level
-    if args.env:
-        os.environ["APP_ENV"] = args.env
-
-    # Load and validate configuration
-    config = config_manager.load_config(args.config)
-
-    # Set up logging
+    config = config_manager.load_config(config_path)
     configure_logging(config.logging)
 
     logger.info(

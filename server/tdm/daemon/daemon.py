@@ -12,9 +12,8 @@ from typing import List, Optional
 
 import requests
 from sqlalchemy.dialects.sqlite import insert
-
-from config import DaemonConfig
-from models import (
+from tdm.core.config import DaemonConfig
+from tdm.core.models import (
     TASK_TYPE_TO_STATUS,
     DaemonSettings,
     Download,
@@ -549,6 +548,9 @@ class WorkProcessor(threading.Thread):
             shutil.copytree(source, destination, dirs_exist_ok=True)
             logger.info(f"Successfully moved file: {source} -> {destination}")
 
+            shutil.rmtree(source)
+            logger.info(f"Removed source directory: {source}")
+
             group.status = GroupStatus.COMPLETED
             group.error = None
 
@@ -572,6 +574,14 @@ class WorkProcessor(threading.Thread):
         group.status = status
         group.error = error
         logger.warning(error)
+        self.session.commit()
+
+    def set_download_status_and_commit(
+        self, downloads: List[Download], status: Status, error: str
+    ):
+        for download in downloads:
+            download.status = status
+            download.error = error
         self.session.commit()
 
     def perform_unpack_task(self, task: Task, downloads: List[Download]):
@@ -628,14 +638,22 @@ class WorkProcessor(threading.Thread):
                     task.error = error_msg
                     self.session.commit()
                     return
-                subprocess.run(
+                proc = subprocess.run(
                     [
                         "unrar",
                         "x",
                         os.path.join(source, orig_files[0]),
                         extract_dir,
-                    ]
+                    ],
+                    capture_output=True,
                 )
+                if proc.returncode != 0:
+                    error_msg = (
+                        f"Unrar failed with return code {proc.returncode} for command with "
+                        f"args {proc.args}, output {proc.stdout}, stderr: {proc.stderr}"
+                    )
+                    raise ValueError(error_msg)
+
                 for file in orig_files:
                     os.remove(os.path.join(source, file))
             else:
@@ -651,6 +669,7 @@ class WorkProcessor(threading.Thread):
             self.set_group_status_and_commit(group, GroupStatus.FAILED, error)
             task.status = Status.FAILED
             task.error = error
+            self.set_download_status_and_commit(downloads, Status.FAILED, error)
             self.session.commit()
 
     def run(self):

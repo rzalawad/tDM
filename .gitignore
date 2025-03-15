@@ -21,3 +21,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Go
+bin/

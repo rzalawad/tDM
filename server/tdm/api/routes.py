@@ -1,17 +1,13 @@
 import logging
 
 from flask import Flask, jsonify, request
-
-from config import initialize_config
-from daemon import Aria2DownloadDaemon
-from models import (
+from tdm.core.models import (
     DaemonSettings,
     Download,
     Group,
     GroupStatus,
     Status,
     TaskType,
-    init_db,
     session_scope,
 )
 
@@ -206,51 +202,3 @@ def get_concurrency():
     except Exception as e:
         logger.error(f"Error fetching concurrency: {e}")
         return jsonify({"concurrency": 1}), 200
-
-
-if __name__ == "__main__":
-    config = initialize_config()
-
-    logger = logging.getLogger(__name__)
-
-    logger.info(f"Server starting in {config.environment.value} environment")
-    logger.debug(f"Configuration: {config}")
-
-    init_db(config.database_path)
-
-    try:
-        with session_scope() as session:
-            daemon_settings = session.query(DaemonSettings).first()
-            if not daemon_settings:
-                logger.info(
-                    f"Creating daemon settings with concurrency {config.daemon.concurrency}"
-                )
-                daemon_settings = DaemonSettings(
-                    id=1, concurrency=config.daemon.concurrency
-                )
-                session.add(daemon_settings)
-    except Exception as e:
-        logger.error(f"Error initializing database settings: {e}")
-        raise
-
-    logger.info("Starting Aria2DownloadDaemon")
-    daemon = Aria2DownloadDaemon(config.daemon)
-    daemon.start()
-
-    try:
-        logger.info(
-            f"Starting Flask server on {config.server.host}:{config.server.port}"
-        )
-        app.run(
-            host=config.server.host,
-            port=config.server.port,
-            debug=config.environment.value == "development",
-        )
-    except Exception as e:
-        logger.error(f"Error running server: {e}")
-        raise
-    finally:
-        logger.info("Stopping Aria2DownloadDaemon")
-        daemon.stop()
-        daemon.join(timeout=5)
-        logger.info("Server shutdown complete")
