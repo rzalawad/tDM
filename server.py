@@ -8,6 +8,7 @@ from models import (
     DaemonSettings,
     Download,
     Group,
+    GroupStatus,
     Status,
     TaskType,
     init_db,
@@ -47,7 +48,7 @@ def download_file():
     try:
         with session_scope() as session:
             logger.info(f"Creating download group with task: {task_value}")
-            new_group = Group(task=task_enum)
+            new_group = Group(task=task_enum, status=GroupStatus.PENDING)
             session.add(new_group)
             session.flush()
 

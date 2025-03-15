@@ -1,4 +1,3 @@
-import atexit
 import logging
 import os
 import re
@@ -9,12 +8,24 @@ import threading
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
-from queue import Empty, Queue
+from typing import List, Optional
 
 import requests
+from sqlalchemy.dialects.sqlite import insert
 
 from config import DaemonConfig
-from models import DaemonSettings, Download, get_session, session_scope
+from models import (
+    TASK_TYPE_TO_STATUS,
+    DaemonSettings,
+    Download,
+    Group,
+    GroupStatus,
+    Status,
+    Task,
+    TaskType,
+    get_session,
+    session_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +134,6 @@ def handle_download_with_aria2(
     download_id,
     url,
     directory,
-    move_queue=None,
     tmp_download_path=None,
     mapper=None,
     aria2_options={},
@@ -132,10 +142,8 @@ def handle_download_with_aria2(
     logger.info(f"Starting aria2 download: {url} to {directory}")
 
     with session_scope() as thread_session:
-        download_record = thread_session.get(Download, download_id)
-        assert download_record, (
-            f"Download record with ID {download_id} not found"
-        )
+        download = thread_session.get(Download, download_id)
+        assert download, f"Download record with ID {download_id} not found"
 
         gid = None
         download_path = directory
@@ -148,8 +156,8 @@ def handle_download_with_aria2(
                         logger.info(f"Mapping URL {url} with {map_program}")
                         mapped_url, err = launch_cmd(map_program, url)
                         if err:
-                            download_record.error = err
-                            download_record.status = "failed"
+                            download.error = err
+                            download.status = Status.FAILED
                             return
                         else:
                             url = mapped_url
@@ -158,6 +166,7 @@ def handle_download_with_aria2(
 
             if tmp_download_path:
                 download_path = tmp_download_path
+            download_path = os.path.join(download_path, str(download.group_id))
 
             options = {
                 "dir": download_path,
@@ -166,9 +175,9 @@ def handle_download_with_aria2(
             }
 
             gid = aria2_client.add_uri(url, options)
-            download_record.status = "in_progress"
-            download_record.error = None
-            download_record.gid = gid
+            download.status = Status.DOWNLOADING
+            download.error = None
+            download.gid = gid
 
             completed = False
             start_time = time.time()
@@ -181,8 +190,8 @@ def handle_download_with_aria2(
 
                     if not status:
                         logger.error(f"Failed to get status for GID {gid}")
-                        download_record.status = "failed"
-                        download_record.error = "Failed to get download status"
+                        download.status = Status.FAILED
+                        download.error = "Failed to get download status"
                         break
 
                     current_status = status.get("status", "").lower()
@@ -198,40 +207,89 @@ def handle_download_with_aria2(
 
                     if total_length > 0:
                         progress = (completed_length / total_length) * 100
-                        download_record.progress = f"{progress:.1f}%"
+                        download.progress = f"{progress:.1f}%"
 
-                    download_record.total_size = total_length
-                    download_record.downloaded = completed_length
-                    download_record.speed = (
+                    download.total_size = total_length
+                    download.downloaded = completed_length
+                    download.speed = (
                         f"{download_speed / 1024:.1f} KB/s"
                         if download_speed > 0
                         else None
                     )
 
                     if current_status == "complete":
-                        download_record.status = "completed"
-                        completed = True
-                        download_record.speed = f"{total_length / (time.time() - start_time) / 1024:.1f} KB/s"
+                        # check if download is part of a group. Only the first download of a group should put a task in the work queue
+                        group_downloads = (
+                            thread_session.query(Download)
+                            .filter_by(group_id=download.group_id)
+                            .all()
+                        )
+                        group_downloads.sort(key=lambda x: x.id)
 
-                        if tmp_download_path and move_queue and filename:
-                            source = os.path.join(download_path, filename)
-                            destination = os.path.join(directory, filename)
-                            move_queue.put(
-                                MoveTask(source, destination, download_id)
+                        unpack_present = move_present = False
+                        # order of this logic is important
+                        if download.group.task == TaskType.UNPACK:
+                            download.status = Status.UNPACKING
+
+                            # Use insert with on_conflict_do_nothing for unique constraint
+                            stmt = (
+                                insert(Task)
+                                .values(
+                                    task_type=TaskType.UNPACK,
+                                    group_id=download.group_id,
+                                    status=Status.PENDING,
+                                )
+                                .on_conflict_do_nothing(
+                                    index_elements=["group_id", "task_type"]
+                                )
                             )
+                            thread_session.execute(stmt)
+                            thread_session.commit()
+
                             logger.info(
-                                f"Queued move task: {source} -> {destination}"
+                                f"Created unpack task in database for group {download.group_id}"
                             )
+                            unpack_present = True
+                            download.group.status = GroupStatus.UNPACKING
+
+                        if directory != download_path:
+                            if not unpack_present:
+                                download.status = Status.MOVING
+
+                            # Use insert with on_conflict_do_nothing for unique constraint
+                            stmt = (
+                                insert(Task)
+                                .values(
+                                    task_type=TaskType.MOVE,
+                                    group_id=download.group_id,
+                                    status=Status.PENDING,
+                                )
+                                .on_conflict_do_nothing(
+                                    index_elements=["group_id", "task_type"]
+                                )
+                            )
+                            thread_session.execute(stmt)
+                            thread_session.commit()
+
+                            logger.info(
+                                f"Created move task in database for group {download.group_id}"
+                            )
+                            move_present = True
+
+                        if not unpack_present and not move_present:
+                            download.status = Status.COMPLETED
+                        completed = True
+                        download.speed = f"{total_length / (time.time() - start_time) / 1024:.1f} KB/s"
 
                     elif current_status == "error":
                         error_msg = status.get("errorMessage", "Unknown error")
-                        download_record.error = error_msg
-                        download_record.status = "failed"
+                        download.error = error_msg
+                        download.status = Status.FAILED
                         completed = True
 
-                    elif time.time() - start_time > 3600:
-                        download_record.error = "Download timed out"
-                        download_record.status = "failed"
+                    elif time.time() - start_time > 3600 * 24:
+                        download.error = "Download timed out"
+                        download.status = Status.FAILED
                         completed = True
 
                         try:
@@ -248,8 +306,8 @@ def handle_download_with_aria2(
         except Exception as e:
             logger.error(f"Error in download process: {e}")
             logger.error(traceback.format_exc())
-            download_record.error = str(e) + "\n" + traceback.format_exc()
-            download_record.status = "failed"
+            download.error = str(e) + "\n" + traceback.format_exc()
+            download.status = Status.FAILED
 
             if gid:
                 try:
@@ -259,7 +317,7 @@ def handle_download_with_aria2(
                         f"Error removing failed download from aria2: {remove_error}"
                     )
 
-        logger.info(f"Download {download_record.status}: {url}")
+        logger.info(f"Download {download.status}: {url}")
 
 
 class Aria2DownloadDaemon(threading.Thread):
@@ -273,11 +331,13 @@ class Aria2DownloadDaemon(threading.Thread):
         if self.config.temporary_download_directory:
             os.makedirs(self.config.temporary_download_directory, exist_ok=True)
 
-        self.move_processor = MoveProcessor()
-        self.move_processor.start()
+        self.work_processor = WorkProcessor(
+            self.config.temporary_download_directory
+        )
+        self.work_processor.start()
 
         self.session = get_session()
-        logger.info("Initialized Aria2DownloadDaemon and MoveProcessor")
+        logger.info("Initialized Aria2DownloadDaemon and WorkProcessor")
 
     def start_aria2c(self):
         if is_aria2c_running():
@@ -338,7 +398,7 @@ class Aria2DownloadDaemon(threading.Thread):
 
                         if (
                             download.status
-                            in ["in_progress", "waiting", "paused"]
+                            in ["downloading", "waiting", "paused"]
                             and download.gid
                         ):
                             try:
@@ -375,7 +435,7 @@ class Aria2DownloadDaemon(threading.Thread):
                 self.session.expire_all()
                 pending_downloads = (
                     self.session.query(Download)
-                    .filter_by(status="pending")
+                    .filter_by(status=Status.PENDING)
                     .all()
                 )
 
@@ -399,7 +459,7 @@ class Aria2DownloadDaemon(threading.Thread):
                     available_slots = 0
 
                 for download in pending_downloads[:available_slots]:
-                    download.status = "submitted"
+                    download.status = Status.SUBMITTED
                     self.session.commit()
                     threading.Thread(
                         target=handle_download_with_aria2,
@@ -407,7 +467,6 @@ class Aria2DownloadDaemon(threading.Thread):
                             download.id,
                             download.url,
                             download.directory,
-                            self.move_processor.queue,
                         ),
                         kwargs={
                             "tmp_download_path": self.config.temporary_download_directory,
@@ -429,68 +488,263 @@ class Aria2DownloadDaemon(threading.Thread):
 
         finally:
             self.cleanup_aria2c()
-            self.move_processor.stop()
-            self.move_processor.join()
+            self.work_processor.stop()
+            self.work_processor.join()
 
     def stop(self):
         self.running = False
 
 
-class MoveTask:
-    def __init__(self, source, destination, download_id):
-        self.source = source
-        self.destination = destination
-        self.download_id = download_id
-
-
-class MoveProcessor(threading.Thread):
-    def __init__(self):
+class WorkProcessor(threading.Thread):
+    def __init__(self, temporary_download_directory: Optional[str] = None):
         super().__init__()
-        self.queue = Queue()
         self.running = True
-        logger.info("Initialized MoveProcessor")
+        self.session = get_session()
+        self.temporary_download_directory = temporary_download_directory
+        logger.info("Initialized WorkProcessor")
+
+    def perform_move_task(self, task: Task, downloads: List[Download]):
+        try:
+            # The source is the temporary download path
+            if not downloads:
+                logger.warning(
+                    f"No downloads found for group ID: {task.group_id}"
+                )
+                return
+
+            group = self.session.get(Group, task.group_id)
+
+            # The source is the temporary download path
+            # The destination is the final directory specified in the download
+            if downloads and downloads[0]:
+                source = os.path.join(
+                    self.temporary_download_directory or downloads[0].directory,
+                    str(task.group_id),
+                )
+                # Destination is the final directory specified in the download
+                destination = downloads[0].directory
+            else:
+                error_msg = (
+                    "Could not determine source or destination for move task"
+                )
+                logger.error(error_msg)
+                group.error = error_msg
+                group.status = GroupStatus.FAILED
+                task.status = Status.FAILED
+                task.error = error_msg
+                self.session.commit()
+                return
+
+            if not os.path.exists(source):
+                error_msg = f"Source file not found: {source}"
+                logger.warning(error_msg)
+                group.error = error_msg
+                group.status = GroupStatus.FAILED
+                task.status = Status.FAILED
+                task.error = error_msg
+                self.session.commit()
+                return
+
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            shutil.copytree(source, destination, dirs_exist_ok=True)
+            logger.info(f"Successfully moved file: {source} -> {destination}")
+
+            group.status = GroupStatus.COMPLETED
+            group.error = None
+
+            for download in downloads:
+                download.status = Status.COMPLETED
+                download.error = None
+
+            task.status = Status.COMPLETED
+            self.session.commit()
+
+        except Exception as e:
+            logger.error(f"Error moving file: {e}")
+            logger.error(traceback.format_exc())
+            task.status = Status.FAILED
+            task.error = str(e) + "\n" + traceback.format_exc()
+            self.session.commit()
+
+    def set_group_status_and_commit(
+        self, group: Group, status: GroupStatus, error: str = None
+    ):
+        group.status = status
+        group.error = error
+        logger.warning(error)
+        self.session.commit()
+
+    def perform_unpack_task(self, task: Task, downloads: List[Download]):
+        try:
+            group = self.session.get(Group, task.group_id)
+
+            # Source is the first download's group directory in the temporary location
+            if downloads and downloads[0]:
+                source = os.path.join(
+                    self.temporary_download_directory or downloads[0].directory,
+                    str(task.group_id),
+                )
+            else:
+                error_msg = "Could not determine source for unpack task"
+                logger.error(error_msg)
+                group.error = error_msg
+                group.status = GroupStatus.FAILED
+                task.status = Status.FAILED
+                task.error = error_msg
+                self.session.commit()
+                return
+
+            if not os.path.exists(source):
+                error_msg = f"Source file not found: {source}"
+                self.set_group_status_and_commit(
+                    group,
+                    GroupStatus.FAILED,
+                    error_msg,
+                )
+                task.status = Status.FAILED
+                task.error = error_msg
+                self.session.commit()
+                return
+
+            # Assume that all files in the source directory are part of the same archive.
+            orig_files = os.listdir(source)
+            extract_dir = source
+            if any(
+                file.endswith((".zip", ".tar", ".gz", ".bz2"))
+                for file in orig_files
+            ):
+                shutil.unpack_archive(
+                    os.path.join(source, orig_files[0]), extract_dir
+                )
+                for file in orig_files:
+                    os.remove(os.path.join(source, file))
+            elif any(file.endswith(".rar") for file in orig_files):
+                if not shutil.which("unrar"):
+                    error_msg = "unrar is not installed"
+                    self.set_group_status_and_commit(
+                        group, GroupStatus.FAILED, error_msg
+                    )
+                    task.status = Status.FAILED
+                    task.error = error_msg
+                    self.session.commit()
+                    return
+                subprocess.run(
+                    [
+                        "unrar",
+                        "x",
+                        os.path.join(source, orig_files[0]),
+                        extract_dir,
+                    ]
+                )
+                for file in orig_files:
+                    os.remove(os.path.join(source, file))
+            else:
+                error_msg = f"Unknown archive format: {orig_files[0]}"
+                raise ValueError(error_msg)
+
+            task.status = Status.COMPLETED
+            self.session.commit()
+            logger.info(f"Successfully unpacked files in {source}")
+
+        except Exception as e:
+            error = str(e) + "\n" + traceback.format_exc()
+            self.set_group_status_and_commit(group, GroupStatus.FAILED, error)
+            task.status = Status.FAILED
+            task.error = error
+            self.session.commit()
 
     def run(self):
-        logger.info("Starting move processor thread")
+        logger.info("Starting task processor thread")
         while self.running:
             try:
-                try:
-                    task = self.queue.get(timeout=1)
-                except Empty:
-                    continue
+                # Check the database for groups with pending tasks
+                self.session.expire_all()
 
-                logger.info(
-                    f"Processing move task: {task.source} -> {task.destination}"
+                # Get all groups that have at least one pending task
+                groups_with_pending_tasks = (
+                    self.session.query(Group)
+                    .join(Task, Group.id == Task.group_id)
+                    .filter(Task.status == Status.PENDING)
+                    .distinct()
+                    .all()
                 )
-                try:
-                    if os.path.exists(task.source):
-                        os.makedirs(
-                            os.path.dirname(task.destination), exist_ok=True
+
+                for group in groups_with_pending_tasks:
+                    # Get all downloads for this group
+                    associated_downloads = (
+                        self.session.query(Download)
+                        .filter_by(group_id=group.id)
+                        .all()
+                    )
+
+                    # Get all pending tasks for this group
+                    tasks = group.tasks
+                    tasks.sort(key=lambda x: x.id)
+                    # pending tasks are always completed sequentially
+                    pending_task_idx = next(
+                        (
+                            i
+                            for i, task in enumerate(tasks)
+                            if task.status == Status.PENDING
+                        ),
+                        None,
+                    )
+                    if pending_task_idx is None:
+                        # all tasks are somehow completed even though we queried for pending tasks
+                        continue
+
+                    task = tasks[pending_task_idx]
+
+                    target_download_status = TASK_TYPE_TO_STATUS[task.task_type]
+
+                    # If any downloads aren't in the right status, skip this task for now
+                    if any(
+                        download.status != target_download_status
+                        for download in associated_downloads
+                    ):
+                        continue
+
+                    try:
+                        # Process the task
+                        if task.task_type == TaskType.MOVE:
+                            self.perform_move_task(task, associated_downloads)
+                        elif task.task_type == TaskType.UNPACK:
+                            self.perform_unpack_task(task, associated_downloads)
+                        else:
+                            logger.error(f"Unknown task type: {task.task_type}")
+                            task.status = Status.FAILED
+                            task.error = f"Unknown task type: {task.task_type}"
+
+                        next_task = (
+                            tasks[pending_task_idx + 1]
+                            if pending_task_idx + 1 < len(tasks)
+                            else None
                         )
-                        shutil.move(task.source, task.destination)
-                        logger.info(
-                            f"Successfully moved file: {task.source} -> {task.destination}"
-                        )
+                        # update download status to next task
+                        for download in associated_downloads:
+                            download.status = (
+                                TASK_TYPE_TO_STATUS[next_task.task_type]
+                                if next_task
+                                else Status.COMPLETED
+                            )
+                        self.session.commit()
+                    except Exception as e:
+                        logger.error(f"Error processing task {task.id}: {e}")
+                        logger.error(traceback.format_exc())
+                        task.status = Status.FAILED
+                        task.error = str(e) + "\n" + traceback.format_exc()
+                        self.session.commit()
 
-                        with session_scope() as session:
-                            download = session.get(Download, task.download_id)
-                            if download:
-                                download.status = "completed"
-
-                    else:
-                        logger.warning(f"Source file not found: {task.source}")
-                except Exception as e:
-                    logger.error(f"Error moving file: {e}")
-                    logger.error(traceback.format_exc())
-
-                self.queue.task_done()
+                # Sleep before checking again
+                time.sleep(1)
 
             except Exception as e:
-                logger.error(f"Error in move processor: {e}")
+                logger.error(f"Error in task processor: {e}")
                 logger.error(traceback.format_exc())
+                time.sleep(1)
 
-        logger.info("Move processor thread stopped")
+        logger.info("Task processor thread stopped")
 
     def stop(self):
         self.running = False
-        logger.info("Stopping move processor thread")
+        logger.info("Stopping task processor thread")

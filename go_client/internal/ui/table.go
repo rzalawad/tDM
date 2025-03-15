@@ -36,7 +36,7 @@ func NewDownloadsTable(downloads []api.Download, app *tview.Application, pages *
 					status := cell.Text
 					var color tcell.Color
 					switch status {
-					case "in_progress":
+					case "downloading":
 						color = tcell.ColorGreen
 					case "pending":
 						color = tcell.ColorYellow
@@ -169,7 +169,7 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 	for i, download := range downloads {
 		var statusColor tcell.Color
 		switch download.Status {
-		case "in_progress":
+		case "downloading":
 			statusColor = tcell.ColorGreen
 		case "pending":
 			statusColor = tcell.ColorYellow
@@ -311,7 +311,7 @@ func UpdateSettingsView(settingsView *tview.TextView, downloads []api.Download, 
 func countActiveDownloads(downloads []api.Download) int {
 	count := 0
 	for _, download := range downloads {
-		if download.Status == "in_progress" {
+		if download.Status == "downloading" {
 			count++
 		}
 	}
