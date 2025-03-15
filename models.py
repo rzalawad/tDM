@@ -57,6 +57,7 @@ class Group(Base):
     error = Column(String)
 
     downloads = relationship("Download", back_populates="group")
+    tasks = relationship("Task", back_populates="group")
 
 
 class Task(Base):
