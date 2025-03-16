@@ -20,12 +20,15 @@ daemon:
   concurrency: 3
   # Time to keep downloads before automatic cleanup (format: 1d, 2h, 30m)
   expire_downloads: 1d
+
   # URL mappers for premium download services
   # Format: domain: command
-  mapper:
-    rapidgator.net: python3 ~/cli_scripts/debrid_api.py
+  # mapper:
+  #   rapidgator.net: python3 ~/cli_scripts/debrid_api.py
+
   # Directory for temporary downloads
-  temporary_download_directory: /media/ridham/945998da-2501-4a8a-be32-012e17820574/tempdir
+  # temporary_download_directory: <dir>
+
   # optionst to aria2 downloader
   aria2:
     log: /tmp/aria2.log
