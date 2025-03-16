@@ -10,3 +10,18 @@ dependencies = [
     "requests>=2.32.3",
     "sqlalchemy>=2.0.39",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "ruff"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+tdm = "tdm.main:main"
+
+# [tool.setuptools]
+# packages = ["tdm"]
