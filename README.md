@@ -1,31 +1,82 @@
-# Terminal-Based Download Manager
+# tDM - Terminal Download Manager
 
-## Project Goal
-The goal of this project is to create a terminal-based application with a client-server architecture that manages file downloads. The application includes a server that handles download requests, a daemon that manages download concurrency, and a client that provides a terminal UI for monitoring and controlling downloads.
+A robust, feature-rich terminal-based download manager designed to help create your file archives.
 
-## Project Structure
-- **Server**: A Flask server that accepts download requests and manages a database using SQLAlchemy to track downloads. It includes endpoints for managing downloads and updating concurrency settings.
-- **Daemon**: A background process that handles file downloads using the `requests` library, updating download speed, progress, and status in real-time.
-- **Python Client**: A terminal-based UI using the `rich` library to display current downloads, their status, speed, progress, and additional details like file size and date added.
-- **Go Client**: A terminal-based UI built with `tview` that allows users to monitor downloads and update concurrency settings via a TUI or CLI.
+## Overview
 
-Two clients exist because I started with the python client but realized the lack of interactive
-support in `rich` library
+tDM provides a comprehensive solution for managing downloads through a terminal interface. It combines a backend server with an intuitive terminal UI, allowing you to monitor and control downloads efficiently. The project is particularly useful for managing large archives and handling various download sources.
 
-## Current Status
-- **Server**: Fully functional with endpoints for managing downloads and concurrency settings.
-- **Daemon**: Operational, managing download concurrency and real-time updates.
-- **Python Client**: Provides a basic UI for monitoring downloads.
-- **Go Client**: Enhanced with features for setting concurrency and displaying current settings.
+## Features
 
-## TODO
-- Manage group downloads
-- Add unit tests for server, daemon, and client components.
-- Allow group downloads + <abstract group task> (unrar, 7z, etc)
-- Aria2 getting stuck (api calls using curl also get stuck) 
-- Handle cleaner exit behavior when aria2c is downloading
-    * downloader threads don't shutdown on exit resulting in ctrl-c getting stuck thus requiring
-      another ctrl-c
-- Delete downloads from UI
-- Handle downloads with multiple files / uris
-- Handle torrents
+- **Multi-Archive Handling**: Download and automatically unpack multiple archives
+- **Smart Cleanup**: Configurable automatic cleanup of completed downloads
+- **Safe Downloads**: Uses a temporary directory before moving to final destination
+- **Dynamic Concurrency**: Adjust download concurrency in real-time
+- **URL Remapping**: Map undownloadable URLs to downloadable ones (debrid service integration)
+- **Group Downloads**: Manage downloads as logical groups
+- **Post-Download Actions**: Automatically extract archives (unrar, 7z, etc.)
+- **User Interface**: Terminal-based UI for monitoring and control
+
+## Architecture
+
+tDM consists of three main components:
+
+- **Server**: A Flask-based API server that manages download requests and tracks progress using SQLAlchemy
+- **Daemon**: A background process that handles the actual file downloads, supporting multiple download methods
+- **Client**: A Go-based terminal UI built with tview, providing both interactive (TUI) and command-line (CLI) interfaces
+
+## Installation
+
+*Coming soon*
+
+## Configuration
+
+See the example configuration file at [config.example.yaml](./config.example.yaml) for detailed options.
+
+The configuration covers:
+- Server settings (host, port)
+- Daemon settings (concurrency, expiration, download directories)
+- URL mappers for premium download services
+- Aria2 downloader options
+- Logging configuration
+
+## Usage
+
+*Coming soon*
+
+## Development
+
+### Project Structure
+```
+tDM/
+├── server/         # Python-based backend
+│   ├── main.py     # Server entry point
+│   └── tdm/        # Core modules
+│       ├── api/    # REST API endpoints
+│       ├── core/   # Configuration and models
+│       └── daemon/ # Download management
+├── client/         # Go-based frontend
+│   ├── cmd/        # Command implementations
+│   └── internal/   # UI and API communication
+└── config.example.yaml  # Configuration template
+```
+
+## Roadmap
+
+- [x] Manage group downloads
+- [x] Allow group downloads + post-processing (unrar, 7z, etc)
+- [x] Delete downloads from UI
+- [x] Handle torrents
+- [ ] Add unit tests for server, daemon, and client components
+- [ ] Fix Aria2 stability issues (API calls occasionally get stuck)
+- [ ] Handle cleaner exit behavior when aria2c is downloading
+- [ ] Support downloads with multiple files/URIs
+
+## License
+
+*License information*
+
+## Contributing
+
+*Contribution guidelines*
+
