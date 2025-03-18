@@ -110,7 +110,7 @@ func showDeleteDownloadConfirmation(app *tview.Application, pages *tview.Pages, 
 	apiClient := api.NewClient("http://localhost:54759")
 	downloadId, err_conv := strconv.Atoi(table.GetCell(row, 0).Text)
 	if err_conv != nil {
-		log.Printf("Can't convert string to int: %d", table.GetCell(row, 0).Text)
+		log.Printf("Can't convert string to int: %s", table.GetCell(row, 0).Text)
 		return
 	}
 	download, err := apiClient.FetchDownload(downloadId)
@@ -165,7 +165,7 @@ func showDeleteDownloadConfirmation(app *tview.Application, pages *tview.Pages, 
 			if err_conv == nil {
 				apiClient.DeleteDownload(downloadId)
 			} else {
-				log.Printf("Can't convert string to int: %d", table.GetCell(row, 0).Text)
+				log.Printf("Can't convert string to int: %s", table.GetCell(row, 0).Text)
 			}
 			pages.RemovePage("delete")
 			pages.SwitchToPage("main")
