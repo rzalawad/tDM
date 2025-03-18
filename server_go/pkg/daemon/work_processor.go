@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rzalawda/tdm/server_go/pkg/core"
+	"github.com/rzalawad/tdm/server_go/pkg/core"
 )
 
 // WorkProcessor handles post-download tasks like unpacking and moving files

@@ -1,4 +1,4 @@
-module github.com/rzalawda/tdm/server_go
+module github.com/rzalawad/tdm/server_go
 
 go 1.21
 

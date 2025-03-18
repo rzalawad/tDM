@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rzalawda/tdm/go_client/internal/api"
-	"github.com/rzalawda/tdm/go_client/internal/ui"
+	"github.com/rzalawad/tdm/go_client/internal/api"
+	"github.com/rzalawad/tdm/go_client/internal/ui"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -38,7 +38,7 @@ func main() {
 			if directory == "" {
 				directory = "."
 			}
-			
+
 			err := submitDownloads(apiClient, args, directory, taskFlag)
 			if err != nil {
 				log.Fatalf("Failed to submit downloads: %v", err)
@@ -95,13 +95,13 @@ func submitDownloads(apiClient *api.Client, urls []string, directory string, tas
 	if err != nil {
 		return fmt.Errorf("failed to submit downloads: %v", err)
 	}
-	
+
 	if len(urls) == 1 {
 		fmt.Printf("Download request for %s will be saved to %s\n", urls[0], absPath)
 	} else {
 		fmt.Printf("Download request for %d URLs will be saved to %s\n", len(urls), absPath)
 	}
-	
+
 	return nil
 }
 

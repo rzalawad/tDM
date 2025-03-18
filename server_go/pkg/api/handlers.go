@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rzalawda/tdm/server_go/pkg/core"
+	"github.com/rzalawad/tdm/server_go/pkg/core"
 )
 
 // DownloadRequest represents a request to download files

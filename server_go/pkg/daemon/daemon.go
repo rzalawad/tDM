@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rzalawda/tdm/server_go/pkg/core"
+	"github.com/rzalawad/tdm/server_go/pkg/core"
 )
 
 // Aria2DownloadDaemon handles aria2c downloads
