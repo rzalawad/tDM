@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -271,6 +272,68 @@ func (d *Aria2DownloadDaemon) Stop() error {
 	return nil
 }
 
+// createTaskIfNotExists creates a task if it doesn't exist already
+// Returns the task (either existing or new) and whether it was created
+func createTaskIfNotExists(db *gorm.DB, groupID uint, taskType core.TaskType) (*core.Task, bool, error) {
+	// First try to find an existing task
+	var task core.Task
+	err := db.Where("group_id = ? AND task_type = ?", groupID, taskType).First(&task).Error
+
+	// If found, return it
+	if err == nil {
+		log.Printf("Found existing task: ID=%d, Type=%s, Status=%s", task.ID, task.TaskType, task.Status)
+		return &task, false, nil
+	}
+
+	// If not found, create a new one
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Try direct creation first - this may fail due to unique constraint
+		newTask := core.Task{
+			TaskType: taskType,
+			GroupID:  groupID,
+			Status:   core.StatusPending,
+		}
+
+		err := db.Create(&newTask).Error
+		if err == nil {
+			log.Printf("Successfully created new task: ID=%d, Type=%s", newTask.ID, newTask.TaskType)
+			return &newTask, true, nil
+		}
+
+		// If creation failed, check if it's due to a unique constraint
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			// Task was created by another process in between our check and creation
+			// Try to get it again
+			if err := db.Where("group_id = ? AND task_type = ?", groupID, taskType).First(&task).Error; err != nil {
+				return nil, false, fmt.Errorf("error retrieving task after unique constraint: %w", err)
+			}
+			log.Printf("Found task after creation attempt: ID=%d, Type=%s", task.ID, task.TaskType)
+			return &task, false, nil
+		}
+
+		// If it's another kind of error
+		return nil, false, fmt.Errorf("error creating task: %w", err)
+	}
+
+	// Some other error occurred during initial lookup
+	return nil, false, fmt.Errorf("error checking for existing task: %w", err)
+}
+
+// dumpAllTasks logs all tasks for a specific group
+func dumpAllTasks(db *gorm.DB, groupID uint) {
+	var tasks []core.Task
+	if err := db.Where("group_id = ?", groupID).Find(&tasks).Error; err != nil {
+		log.Printf("Error querying all tasks for group %d: %v", groupID, err)
+		return
+	}
+
+	log.Printf("==== All tasks for group %d ====", groupID)
+	for _, task := range tasks {
+		log.Printf("  Task ID=%d, Type=%s, Status=%s", task.ID, task.TaskType, task.Status)
+	}
+	log.Printf("================================")
+}
+
 // handleDownloadWithAria2 manages a single download with aria2
 func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 	mapper map[string]string, aria2Options map[string]string) {
@@ -431,16 +494,15 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 			if group.Task != nil && *group.Task == core.TaskTypeUnpack {
 				download.Status = core.StatusUnpacking
 
-				// Create unpack task if it doesn't exist
-				var unpackTask core.Task
-				if db.Where("group_id = ? AND task_type = ?", group.ID, core.TaskTypeUnpack).First(&unpackTask).Error != nil {
-					unpackTask = core.Task{
-						TaskType: core.TaskTypeUnpack,
-						GroupID:  group.ID,
-						Status:   core.StatusPending,
-					}
-					db.Create(&unpackTask)
-					log.Printf("Created unpack task in database for group %d", group.ID)
+				// Create unpack task using the reliable function
+				unpackTask, created, err := createTaskIfNotExists(db, group.ID, core.TaskTypeUnpack)
+				if err != nil {
+					log.Printf("Error creating unpack task: %v", err)
+				} else if created {
+					log.Printf("Created new unpack task ID=%d for group %d", unpackTask.ID, group.ID)
+				} else {
+					log.Printf("Found existing unpack task ID=%d for group %d with status %s",
+						unpackTask.ID, group.ID, unpackTask.Status)
 				}
 
 				unpackPresent = true
@@ -448,26 +510,29 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 				db.Save(&group)
 			}
 
-			// If using temp directory, create a move task
-			if directory != downloadPath {
-				if !unpackPresent {
-					download.Status = core.StatusMoving
-				}
+			// Dump all tasks before
+			dumpAllTasks(db, group.ID)
 
-				// Create move task if it doesn't exist
-				var moveTask core.Task
-				if db.Where("group_id = ? AND task_type = ?", group.ID, core.TaskTypeMove).First(&moveTask).Error != nil {
-					moveTask = core.Task{
-						TaskType: core.TaskTypeMove,
-						GroupID:  group.ID,
-						Status:   core.StatusPending,
-					}
-					db.Create(&moveTask)
-					log.Printf("Created move task in database for group %d", group.ID)
-				}
-
-				movePresent = true
+			// Always create a move task to move files out of the group_id subdirectory
+			if !unpackPresent {
+				download.Status = core.StatusMoving
 			}
+
+			// Create move task using the reliable function
+			moveTask, created, err := createTaskIfNotExists(db, group.ID, core.TaskTypeMove)
+			if err != nil {
+				log.Printf("Error creating move task: %v", err)
+			} else if created {
+				log.Printf("Created new move task ID=%d for group %d", moveTask.ID, group.ID)
+			} else {
+				log.Printf("Found existing move task ID=%d for group %d with status %s",
+					moveTask.ID, group.ID, moveTask.Status)
+			}
+
+			// Dump all tasks after
+			dumpAllTasks(db, group.ID)
+
+			movePresent = true
 
 			// If no special tasks, mark as completed
 			if !unpackPresent && !movePresent {

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -70,6 +71,11 @@ func (w *WorkProcessor) Start() {
 				if err := db.Where("group_id = ?", group.ID).Order("id").Find(&tasks).Error; err != nil {
 					log.Printf("Error querying tasks for group %d: %v", group.ID, err)
 					continue
+				}
+
+				log.Printf("Group %d has %d tasks", group.ID, len(tasks))
+				for i, t := range tasks {
+					log.Printf("  Task %d: ID=%d, Type=%s, Status=%s", i+1, t.ID, t.TaskType, t.Status)
 				}
 
 				// Find pending task
@@ -175,6 +181,7 @@ func (w *WorkProcessor) Stop() {
 
 // performMoveTask moves files from the temporary directory to the final directory
 func (w *WorkProcessor) performMoveTask(task *core.Task, downloads []core.Download) {
+	log.Printf("Performing move task for group %d", task.GroupID)
 	db := core.GetDB()
 
 	// Get the group
@@ -233,50 +240,68 @@ func (w *WorkProcessor) performMoveTask(task *core.Task, downloads []core.Downlo
 		return
 	}
 
-	// Copy all files from source to destination
-	err := filepath.WalkDir(source, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Calculate relative path from source
-		relPath, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
-		}
-
-		// Skip the root directory
-		if relPath == "." {
-			return nil
-		}
-
-		destPath := filepath.Join(destination, relPath)
-
-		if d.IsDir() {
-			// Create directory
-			return os.MkdirAll(destPath, 0755)
-		} else {
-			// Copy file
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			return os.WriteFile(destPath, data, 0644)
-		}
-	})
-
+	// Read the source directory entries and copy them to destination
+	entries, err := os.ReadDir(source)
 	if err != nil {
-		log.Printf("Error copying files: %v", err)
+		log.Printf("Error reading source directory: %v", err)
 		task.Status = core.StatusFailed
-		errMsg := fmt.Sprintf("Error copying files: %v", err)
+		errMsg := fmt.Sprintf("Error reading source directory: %v", err)
 		task.Error = &errMsg
-
-		group.Status = core.GroupStatusFailed
-		group.Error = &errMsg
-
-		db.Save(&task)
-		db.Save(&group)
+		db.Save(task)
 		return
+	}
+
+	// Copy each entry to destination
+	for _, entry := range entries {
+		srcPath := filepath.Join(source, entry.Name())
+		dstPath := filepath.Join(destination, entry.Name())
+
+		if entry.IsDir() {
+			// For directories, copy the entire directory recursively
+			err = filepath.WalkDir(srcPath, func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+
+				// Get path relative to the subdirectory
+				relPath, err := filepath.Rel(srcPath, path)
+				if err != nil {
+					return err
+				}
+
+				// Skip the root of the subdirectory
+				if relPath == "." {
+					return nil
+				}
+
+				fullDestPath := filepath.Join(dstPath, relPath)
+				log.Printf("Copying %s to %s", path, fullDestPath)
+
+				if d.IsDir() {
+					log.Printf("Creating directory %s", fullDestPath)
+					return os.MkdirAll(fullDestPath, 0755)
+				}
+
+				return copyFile(path, fullDestPath)
+			})
+		} else {
+			// For files, just copy the file
+			err = copyFile(srcPath, dstPath)
+		}
+
+		if err != nil {
+			log.Printf("Error copying %s: %v", entry.Name(), err)
+			task.Status = core.StatusFailed
+			errMsg := fmt.Sprintf("Error copying files: %v", err)
+			task.Error = &errMsg
+
+			group.Status = core.GroupStatusFailed
+			group.Error = &errMsg
+
+			db.Save(task)
+			db.Save(&group)
+			return
+		}
 	}
 
 	// Remove source directory after successful copy
@@ -389,9 +414,11 @@ func (w *WorkProcessor) performUnpackTask(task *core.Task, downloads []core.Down
 				log.Printf("Failed to extract archive: %v", err)
 				continue
 			}
-			// Delete the archive file after extraction
-			if err := os.Remove(filePath); err != nil {
-				log.Printf("Warning: Failed to delete archive after extraction: %v", err)
+			// Delete all original files after extraction
+			for _, file := range files {
+				if err := os.Remove(filepath.Join(source, file.Name())); err != nil {
+					log.Printf("Warning: Failed to delete file after extraction: %v", err)
+				}
 			}
 			extractedFile = true
 			break
@@ -417,9 +444,11 @@ func (w *WorkProcessor) performUnpackTask(task *core.Task, downloads []core.Down
 				return
 			}
 
-			// Delete the archive file after extraction
-			if err := os.Remove(filePath); err != nil {
-				log.Printf("Warning: Failed to delete RAR archive after extraction: %v", err)
+			// Delete all original files after extraction
+			for _, file := range files {
+				if err := os.Remove(filepath.Join(source, file.Name())); err != nil {
+					log.Printf("Warning: Failed to delete file after extraction: %v", err)
+				}
 			}
 			extractedFile = true
 			break
@@ -449,4 +478,22 @@ func extractArchive(archivePath, destPath string) error {
 	// For a real implementation, you'd want to use Go's archive packages
 	cmd := exec.Command("tar", "-xf", archivePath, "-C", destPath)
 	return cmd.Run()
+}
+
+// copyFile copies a single file from src to dst
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }

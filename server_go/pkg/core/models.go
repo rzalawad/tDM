@@ -64,8 +64,8 @@ type Group struct {
 // Task represents a task to be performed on a group of downloads
 type Task struct {
 	ID       uint     `gorm:"primaryKey" json:"id"`
-	TaskType TaskType `gorm:"not null" json:"task_type"`
-	GroupID  uint     `gorm:"index:idx_group_task_type,unique" json:"group_id"`
+	TaskType TaskType `gorm:"uniqueIndex:idx_group_task_type" json:"task_type"`
+	GroupID  uint     `gorm:"uniqueIndex:idx_group_task_type" json:"group_id"`
 	Status   Status   `gorm:"not null" json:"status"`
 	Error    *string  `json:"error"`
 	Group    Group    `gorm:"foreignKey:GroupID" json:"-"`

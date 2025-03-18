@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -21,7 +22,20 @@ func main() {
 	host := flag.String("host", "", "Server host (overrides config file)")
 	port := flag.Int("port", 0, "Server port (overrides config file)")
 	dbPath := flag.String("db-path", "", "Database path (overrides config file)")
+	logPath := flag.String("log-path", "server.log", "Path to log file")
 	flag.Parse()
+
+	// Set up logging to file and console
+	logFile, err := os.OpenFile(*logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer logFile.Close()
+
+	// Write logs to both stdout and file
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(multiWriter)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	// Initialize configuration
 	config, err := core.InitializeConfig(*configPath)
