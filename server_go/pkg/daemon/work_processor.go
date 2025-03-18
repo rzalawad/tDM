@@ -73,11 +73,6 @@ func (w *WorkProcessor) Start() {
 					continue
 				}
 
-				log.Printf("Group %d has %d tasks", group.ID, len(tasks))
-				for i, t := range tasks {
-					log.Printf("  Task %d: ID=%d, Type=%s, Status=%s", i+1, t.ID, t.TaskType, t.Status)
-				}
-
 				// Find pending task
 				var pendingTask *core.Task
 				for i, task := range tasks {
@@ -275,10 +270,8 @@ func (w *WorkProcessor) performMoveTask(task *core.Task, downloads []core.Downlo
 				}
 
 				fullDestPath := filepath.Join(dstPath, relPath)
-				log.Printf("Copying %s to %s", path, fullDestPath)
 
 				if d.IsDir() {
-					log.Printf("Creating directory %s", fullDestPath)
 					return os.MkdirAll(fullDestPath, 0755)
 				}
 

@@ -281,7 +281,6 @@ func createTaskIfNotExists(db *gorm.DB, groupID uint, taskType core.TaskType) (*
 
 	// If found, return it
 	if err == nil {
-		log.Printf("Found existing task: ID=%d, Type=%s, Status=%s", task.ID, task.TaskType, task.Status)
 		return &task, false, nil
 	}
 
@@ -296,7 +295,6 @@ func createTaskIfNotExists(db *gorm.DB, groupID uint, taskType core.TaskType) (*
 
 		err := db.Create(&newTask).Error
 		if err == nil {
-			log.Printf("Successfully created new task: ID=%d, Type=%s", newTask.ID, newTask.TaskType)
 			return &newTask, true, nil
 		}
 
@@ -307,7 +305,6 @@ func createTaskIfNotExists(db *gorm.DB, groupID uint, taskType core.TaskType) (*
 			if err := db.Where("group_id = ? AND task_type = ?", groupID, taskType).First(&task).Error; err != nil {
 				return nil, false, fmt.Errorf("error retrieving task after unique constraint: %w", err)
 			}
-			log.Printf("Found task after creation attempt: ID=%d, Type=%s", task.ID, task.TaskType)
 			return &task, false, nil
 		}
 
@@ -317,21 +314,6 @@ func createTaskIfNotExists(db *gorm.DB, groupID uint, taskType core.TaskType) (*
 
 	// Some other error occurred during initial lookup
 	return nil, false, fmt.Errorf("error checking for existing task: %w", err)
-}
-
-// dumpAllTasks logs all tasks for a specific group
-func dumpAllTasks(db *gorm.DB, groupID uint) {
-	var tasks []core.Task
-	if err := db.Where("group_id = ?", groupID).Find(&tasks).Error; err != nil {
-		log.Printf("Error querying all tasks for group %d: %v", groupID, err)
-		return
-	}
-
-	log.Printf("==== All tasks for group %d ====", groupID)
-	for _, task := range tasks {
-		log.Printf("  Task ID=%d, Type=%s, Status=%s", task.ID, task.TaskType, task.Status)
-	}
-	log.Printf("================================")
 }
 
 // handleDownloadWithAria2 manages a single download with aria2
@@ -494,15 +476,10 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 			if group.Task != nil && *group.Task == core.TaskTypeUnpack {
 				download.Status = core.StatusUnpacking
 
-				// Create unpack task using the reliable function
-				unpackTask, created, err := createTaskIfNotExists(db, group.ID, core.TaskTypeUnpack)
+				// Create unpack task
+				_, _, err := createTaskIfNotExists(db, group.ID, core.TaskTypeUnpack)
 				if err != nil {
 					log.Printf("Error creating unpack task: %v", err)
-				} else if created {
-					log.Printf("Created new unpack task ID=%d for group %d", unpackTask.ID, group.ID)
-				} else {
-					log.Printf("Found existing unpack task ID=%d for group %d with status %s",
-						unpackTask.ID, group.ID, unpackTask.Status)
 				}
 
 				unpackPresent = true
@@ -510,27 +487,16 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 				db.Save(&group)
 			}
 
-			// Dump all tasks before
-			dumpAllTasks(db, group.ID)
-
 			// Always create a move task to move files out of the group_id subdirectory
 			if !unpackPresent {
 				download.Status = core.StatusMoving
 			}
 
-			// Create move task using the reliable function
-			moveTask, created, err := createTaskIfNotExists(db, group.ID, core.TaskTypeMove)
+			// Create move task
+			_, _, err := createTaskIfNotExists(db, group.ID, core.TaskTypeMove)
 			if err != nil {
 				log.Printf("Error creating move task: %v", err)
-			} else if created {
-				log.Printf("Created new move task ID=%d for group %d", moveTask.ID, group.ID)
-			} else {
-				log.Printf("Found existing move task ID=%d for group %d with status %s",
-					moveTask.ID, group.ID, moveTask.Status)
 			}
-
-			// Dump all tasks after
-			dumpAllTasks(db, group.ID)
 
 			movePresent = true
 
