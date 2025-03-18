@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rzalawad/tdm/server_go/pkg/core"
+	"gorm.io/gorm"
 )
 
 // DownloadRequest represents a request to download files
@@ -91,8 +92,7 @@ func handleDownload(c *gin.Context) {
 	}
 
 	// Create group and downloads in a transaction
-	db := core.GetDB()
-	err := core.Transaction(func(tx *core.DB) error {
+	err := core.Transaction(func(tx *gorm.DB) error {
 		// Create new group
 		group := core.Group{
 			Task:   taskEnum,

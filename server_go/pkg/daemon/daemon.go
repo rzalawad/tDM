@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rzalawad/tdm/server_go/pkg/core"
+	"gorm.io/gorm"
 )
 
 // Aria2DownloadDaemon handles aria2c downloads
@@ -21,7 +22,7 @@ type Aria2DownloadDaemon struct {
 	aria2Cmd      *exec.Cmd
 	running       bool
 	wg            sync.WaitGroup
-	db            *core.DB
+	db            *gorm.DB
 	workProcessor *WorkProcessor
 }
 
