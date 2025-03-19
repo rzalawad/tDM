@@ -11,9 +11,9 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rzalawad/tdm/server_go/pkg/api"
-	"github.com/rzalawad/tdm/server_go/pkg/core"
-	"github.com/rzalawad/tdm/server_go/pkg/daemon"
+	"github.com/rzalawad/tdm/server/pkg/api"
+	"github.com/rzalawad/tdm/server/pkg/core"
+	"github.com/rzalawad/tdm/server/pkg/daemon"
 )
 
 func main() {

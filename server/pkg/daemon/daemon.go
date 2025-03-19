@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rzalawad/tdm/server_go/pkg/core"
+	"github.com/rzalawad/tdm/server/pkg/core"
 	"gorm.io/gorm"
 )
 
