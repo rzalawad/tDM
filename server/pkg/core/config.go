@@ -67,6 +67,7 @@ type DaemonConfig struct {
 	ExpireDownloads            string            `yaml:"expire_downloads" json:"expire_downloads"`
 	Mapper                     map[string]string `yaml:"mapper" json:"mapper,omitempty"`
 	TemporaryDownloadDirectory string            `yaml:"temporary_download_directory" json:"temporary_download_directory,omitempty"`
+	Organize                   string            `yaml:"organize" json:"organize,omitempty"`
 	Aria2                      Aria2Config       `yaml:"aria2" json:"aria2"`
 }
 
@@ -257,6 +258,9 @@ func (cm *ConfigManager) LoadConfig(configPath string) (*AppConfig, error) {
 			}
 			if len(fileConfig.Daemon.Mapper) > 0 {
 				config.Daemon.Mapper = fileConfig.Daemon.Mapper
+			}
+			if fileConfig.Daemon.Organize != "" {
+				config.Daemon.Organize = fileConfig.Daemon.Organize
 			}
 
 			// Aria2 config
