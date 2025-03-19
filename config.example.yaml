@@ -21,6 +21,7 @@ daemon:
   # Time to keep downloads before automatic cleanup (format: 1d, 2h, 30m)
   expire_downloads: 1d
 
+
   # URL mappers for premium download services
   # Format: domain: command
   # mapper:
@@ -28,6 +29,13 @@ daemon:
 
   # Directory for temporary downloads
   # temporary_download_directory: <dir>
+
+  # Path to the folder creator script
+  # The specified command is passed the directory where downloaded (and unpacked) files
+  # are stored. Based on patterns, user can create folders as they want.
+  # The newly created folders are then moved to the final directory (regardless of a temporary directory).
+  # If the script returns non-zero exit code, move task will still occur
+  # organize: python3 ~/cli_scripts/folder_creator.py
 
   # optionst to aria2 downloader
   aria2:
