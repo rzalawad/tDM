@@ -43,7 +43,7 @@ func NewAria2DownloadDaemon(config *core.DaemonConfig) *Aria2DownloadDaemon {
 	}
 
 	// Create work processor
-	daemon.workProcessor = NewWorkProcessor(config.TemporaryDownloadDirectory)
+	daemon.workProcessor = NewWorkProcessor(config)
 
 	return daemon
 }
@@ -234,6 +234,20 @@ func (d *Aria2DownloadDaemon) Start() error {
 				// Start download in a separate goroutine
 				go handleDownloadWithAria2(download.ID, download.URL, download.Directory,
 					d.config.TemporaryDownloadDirectory, d.config.Mapper, d.config.Aria2.DownloadOptions)
+
+				var group core.Group
+				db.First(&group, download.GroupID)
+				if group.Task != nil && *group.Task == core.TaskTypeUnpack {
+					createTaskIfNotExists(db, group.ID, core.TaskTypeUnpack)
+				}
+
+				if d.config.Organize != "" {
+					createTaskIfNotExists(db, group.ID, core.TaskTypeOrganize)
+				}
+
+				if d.config.TemporaryDownloadDirectory != "" {
+					createTaskIfNotExists(db, group.ID, core.TaskTypeMove)
+				}
 			}
 
 			// Periodically cleanup old downloads (once per hour)
@@ -462,48 +476,7 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 
 		// Handle completion
 		if currentStatus == "complete" {
-			// Get the download's group and its other downloads
-			var group core.Group
-			var groupDownloads []core.Download
-
-			db.First(&group, download.GroupID)
-			db.Where("group_id = ?", download.GroupID).Order("id asc").Find(&groupDownloads)
-
-			// Check if download is part of a group with tasks
-			unpackPresent := false
-			movePresent := false
-
-			if group.Task != nil && *group.Task == core.TaskTypeUnpack {
-				download.Status = core.StatusUnpacking
-
-				// Create unpack task
-				_, _, err := createTaskIfNotExists(db, group.ID, core.TaskTypeUnpack)
-				if err != nil {
-					log.Printf("Error creating unpack task: %v", err)
-				}
-
-				unpackPresent = true
-				group.Status = core.GroupStatusUnpacking
-				db.Save(&group)
-			}
-
-			// Always create a move task to move files out of the group_id subdirectory
-			if !unpackPresent {
-				download.Status = core.StatusMoving
-			}
-
-			// Create move task
-			_, _, err := createTaskIfNotExists(db, group.ID, core.TaskTypeMove)
-			if err != nil {
-				log.Printf("Error creating move task: %v", err)
-			}
-
-			movePresent = true
-
-			// If no special tasks, mark as completed
-			if !unpackPresent && !movePresent {
-				download.Status = core.StatusCompleted
-			}
+			download.Status = core.StatusDownloaded
 
 			// Update average speed for completed download
 			totalTime := time.Since(startTime).Seconds()

@@ -16,15 +16,15 @@ import (
 
 // WorkProcessor handles post-download tasks like unpacking and moving files
 type WorkProcessor struct {
-	tempDir string
 	running bool
 	wg      sync.WaitGroup
+	config  *core.DaemonConfig
 }
 
 // NewWorkProcessor creates a new work processor
-func NewWorkProcessor(tempDir string) *WorkProcessor {
+func NewWorkProcessor(config *core.DaemonConfig) *WorkProcessor {
 	return &WorkProcessor{
-		tempDir: tempDir,
+		config:  config,
 		running: false,
 	}
 }
@@ -66,42 +66,10 @@ func (w *WorkProcessor) Start() {
 					continue
 				}
 
-				// Get all tasks for this group
-				var tasks []core.Task
-				if err := db.Where("group_id = ?", group.ID).Order("id").Find(&tasks).Error; err != nil {
-					log.Printf("Error querying tasks for group %d: %v", group.ID, err)
-					continue
-				}
-
-				// Find pending task
-				var pendingTask *core.Task
-				for i, task := range tasks {
-					if task.Status == core.StatusPending {
-						pendingTask = &tasks[i]
-						break
-					}
-				}
-
-				if pendingTask == nil {
-					// Should not happen as we queried for pending tasks
-					continue
-				}
-
-				// Get required download status for this task type
-				targetDownloadStatus, ok := core.TaskTypeToStatus[pendingTask.TaskType]
-				if !ok {
-					log.Printf("Unknown task type: %s", pendingTask.TaskType)
-					pendingTask.Status = core.StatusFailed
-					errMsg := fmt.Sprintf("Unknown task type: %s", pendingTask.TaskType)
-					pendingTask.Error = &errMsg
-					db.Save(&pendingTask)
-					continue
-				}
-
 				// Check if all downloads are in the right status
 				allDownloadsReady := true
 				for _, download := range downloads {
-					if download.Status != targetDownloadStatus {
+					if download.Status != core.StatusDownloaded {
 						allDownloadsReady = false
 						break
 					}
@@ -112,48 +80,60 @@ func (w *WorkProcessor) Start() {
 					continue
 				}
 
-				// Process the task
-				log.Printf("Processing task %d of type %s for group %d", pendingTask.ID, pendingTask.TaskType, group.ID)
-
-				switch pendingTask.TaskType {
-				case core.TaskTypeMove:
-					w.performMoveTask(pendingTask, downloads)
-				case core.TaskTypeUnpack:
-					w.performUnpackTask(pendingTask, downloads)
-				default:
-					errMsg := fmt.Sprintf("Unknown task type: %s", pendingTask.TaskType)
-					pendingTask.Status = core.StatusFailed
-					pendingTask.Error = &errMsg
-					db.Save(pendingTask)
+				// Get all tasks for this group
+				var tasks []core.Task
+				if err := db.Where("group_id = ?", group.ID).Order("id").Find(&tasks).Error; err != nil {
+					log.Printf("Error querying tasks for group %d: %v", group.ID, err)
 					continue
 				}
 
-				// If task completed successfully, update download statuses to next task
-				if pendingTask.Status == core.StatusCompleted {
-					// Find next task if any
-					var nextTask *core.Task
-					for i, task := range tasks {
-						if task.ID == pendingTask.ID && i < len(tasks)-1 {
-							nextTask = &tasks[i+1]
-							break
-						}
-					}
+				// Process tasks in order
+				for _, task := range tasks {
+					// Process the task
+					log.Printf("Processing task %d of type %s for group %d", task.ID, task.TaskType, group.ID)
 
-					// Update download status
+					// Update download status for all downloads in this group
+					isValidTask := true
 					for i := range downloads {
-						if nextTask != nil {
-							nextStatus, ok := core.TaskTypeToStatus[nextTask.TaskType]
-							if ok {
-								downloads[i].Status = nextStatus
-							} else {
-								downloads[i].Status = core.StatusCompleted
-							}
+						status, exists := core.TaskTypeToStatus[task.TaskType]
+						if exists {
+							downloads[i].Status = status
 						} else {
-							downloads[i].Status = core.StatusCompleted
+							downloads[i].Status = core.StatusFailed
+							errMsg := fmt.Sprintf("Unknown task type: %s", task.TaskType)
+							downloads[i].Error = &errMsg
+							db.Save(&downloads[i])
+							log.Printf("Unknown task type: %s", task.TaskType)
+							isValidTask = false
 						}
+						// Apply the status and save
 						db.Save(&downloads[i])
 					}
+					if !isValidTask {
+						continue
+					}
+
+					switch task.TaskType {
+					case core.TaskTypeMove:
+						w.performMoveTask(&task, downloads)
+					case core.TaskTypeUnpack:
+						w.performUnpackTask(&task, downloads)
+					case core.TaskTypeOrganize:
+						w.performOrganizeTask(&task, downloads)
+					default:
+						errMsg := fmt.Sprintf("Unknown task type: %s", task.TaskType)
+						task.Status = core.StatusFailed
+						task.Error = &errMsg
+						db.Save(task)
+						continue
+					}
 				}
+				for i := range downloads {
+					downloads[i].Status = core.StatusCompleted
+					downloads[i].Error = nil
+					db.Save(&downloads[i])
+				}
+
 			}
 
 			// Sleep before next check
@@ -172,6 +152,41 @@ func (w *WorkProcessor) Wait() {
 // Stop shuts down the work processor
 func (w *WorkProcessor) Stop() {
 	w.running = false
+}
+
+// performOrganizeTask organizers files based on the provided organize script to create folders
+func (w *WorkProcessor) performOrganizeTask(task *core.Task, downloads []core.Download) {
+	log.Printf("Performing organize task for group %d", task.GroupID)
+	db := core.GetDB()
+
+	downloadDirectory := filepath.Join(w.config.TemporaryDownloadDirectory, fmt.Sprintf("%d", task.GroupID))
+	if w.config.TemporaryDownloadDirectory == "" {
+		downloadDirectory = downloads[0].Directory
+	}
+
+	script := w.config.Organize
+	if script == "" {
+		log.Printf("No organize script provided, skipping organize task for group %d", task.GroupID)
+		return
+	}
+
+	cmd := exec.Command("sh", "-c", fmt.Sprintf("%s %s", script, downloadDirectory))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error running organize script: %v", err)
+		log.Printf("Output: %s", string(output))
+		task.Status = core.StatusFailed
+		errMsg := fmt.Sprintf("Error running organize script: %v", err)
+		task.Error = &errMsg
+		db.Save(task)
+		return
+	}
+
+	log.Printf("Successfully ran organize script: %s", output)
+	task.Status = core.StatusCompleted
+	task.Error = nil
+	db.Save(task)
+
 }
 
 // performMoveTask moves files from the temporary directory to the final directory
@@ -202,8 +217,9 @@ func (w *WorkProcessor) performMoveTask(task *core.Task, downloads []core.Downlo
 
 	// Source is the temporary download path or the first download's directory
 	// with the group ID as a subdirectory
-	source := filepath.Join(w.tempDir, fmt.Sprintf("%d", task.GroupID))
-	if w.tempDir == "" {
+	log.Printf("Temporary download directory: %s", w.config.TemporaryDownloadDirectory)
+	source := filepath.Join(w.config.TemporaryDownloadDirectory, fmt.Sprintf("%d", task.GroupID))
+	if w.config.TemporaryDownloadDirectory == "" {
 		source = filepath.Join(downloads[0].Directory, fmt.Sprintf("%d", task.GroupID))
 	}
 
@@ -245,56 +261,50 @@ func (w *WorkProcessor) performMoveTask(task *core.Task, downloads []core.Downlo
 		db.Save(task)
 		return
 	}
-
-	// Copy each entry to destination
 	for _, entry := range entries {
-		srcPath := filepath.Join(source, entry.Name())
-		dstPath := filepath.Join(destination, entry.Name())
+		log.Printf("Entry: %s %t", entry.Name(), entry.IsDir())
+	}
 
-		if entry.IsDir() {
-			// For directories, copy the entire directory recursively
-			err = filepath.WalkDir(srcPath, func(path string, d fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-
-				// Get path relative to the subdirectory
-				relPath, err := filepath.Rel(srcPath, path)
-				if err != nil {
-					return err
-				}
-
-				// Skip the root of the subdirectory
-				if relPath == "." {
-					return nil
-				}
-
-				fullDestPath := filepath.Join(dstPath, relPath)
-
-				if d.IsDir() {
-					return os.MkdirAll(fullDestPath, 0755)
-				}
-
-				return copyFile(path, fullDestPath)
-			})
-		} else {
-			// For files, just copy the file
-			err = copyFile(srcPath, dstPath)
-		}
-
+	// Walk the entire source directory and copy to destination
+	err = filepath.WalkDir(source, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Printf("Error copying %s: %v", entry.Name(), err)
-			task.Status = core.StatusFailed
-			errMsg := fmt.Sprintf("Error copying files: %v", err)
-			task.Error = &errMsg
-
-			group.Status = core.GroupStatusFailed
-			group.Error = &errMsg
-
-			db.Save(task)
-			db.Save(&group)
-			return
+			return err
 		}
+
+		// Get path relative to the source directory
+		relPath, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip the root of the source directory
+		if relPath == "." {
+			return nil
+		}
+
+		fullDestPath := filepath.Join(destination, relPath)
+
+		if d.IsDir() {
+			log.Printf("Creating directory: %s", fullDestPath)
+			return os.MkdirAll(fullDestPath, 0755)
+		}
+
+		log.Printf("Copying file: %s to %s", path, fullDestPath)
+		return copyFile(path, fullDestPath)
+	})
+
+	if err != nil {
+		log.Printf("Error copying files: %v", err)
+		task.Status = core.StatusFailed
+		errMsg := fmt.Sprintf("Error copying files: %v", err)
+		task.Error = &errMsg
+
+		group.Status = core.GroupStatusFailed
+		group.Error = &errMsg
+
+		db.Save(task)
+		db.Save(&group)
+		return
 	}
 
 	// Remove source directory after successful copy
@@ -349,8 +359,9 @@ func (w *WorkProcessor) performUnpackTask(task *core.Task, downloads []core.Down
 	}
 
 	// Source directory (where we'll look for archives)
-	source := filepath.Join(w.tempDir, fmt.Sprintf("%d", task.GroupID))
-	if w.tempDir == "" {
+	source := filepath.Join(w.config.TemporaryDownloadDirectory, fmt.Sprintf("%d", task.GroupID))
+
+	if w.config.TemporaryDownloadDirectory == "" {
 		source = filepath.Join(downloads[0].Directory, fmt.Sprintf("%d", task.GroupID))
 	}
 

@@ -20,17 +20,20 @@ type GroupStatus string
 
 const (
 	// Task types
-	TaskTypeUnpack TaskType = "unpack"
-	TaskTypeMove   TaskType = "move"
+	TaskTypeUnpack   TaskType = "unpack"
+	TaskTypeMove     TaskType = "move"
+	TaskTypeOrganize TaskType = "organize"
 
 	// Status values
 	StatusPending     Status = "pending"
 	StatusSubmitted   Status = "submitted"
 	StatusDownloading Status = "downloading"
+	StatusDownloaded  Status = "downloaded"
 	StatusCompleted   Status = "completed"
 	StatusFailed      Status = "failed"
 	StatusMoving      Status = "moving"
 	StatusUnpacking   Status = "unpacking"
+	StatusOrganizing  Status = "organizing"
 
 	// GroupStatus values
 	GroupStatusPending   GroupStatus = "pending"
@@ -41,8 +44,9 @@ const (
 
 // Map task types to their corresponding statuses
 var TaskTypeToStatus = map[TaskType]Status{
-	TaskTypeUnpack: StatusUnpacking,
-	TaskTypeMove:   StatusMoving,
+	TaskTypeUnpack:   StatusUnpacking,
+	TaskTypeMove:     StatusMoving,
+	TaskTypeOrganize: StatusOrganizing,
 }
 
 // Map statuses back to task types
