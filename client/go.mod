@@ -1,4 +1,4 @@
-module github.com/rzalawda/tdm/go_client
+module github.com/rzalawad/tdm/go_client
 
 go 1.24.0
 
