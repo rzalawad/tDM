@@ -40,6 +40,7 @@ daemon:
   # optionst to aria2 downloader
   aria2:
     log: /tmp/aria2.log
+    log_level: warn
     download_options:
       max-connection-per-server: 1
       # For some reason, this is not working but api call succeeds. However, falloc = "abc" fails

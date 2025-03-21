@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"gopkg.in/yaml.v3"
+	"slices"
 )
 
 // Environment represents the application environment
@@ -39,6 +40,7 @@ type Aria2Config struct {
 	Port            int               `yaml:"port" json:"port"`
 	Secret          string            `yaml:"secret" json:"secret,omitempty"`
 	Log             string            `yaml:"log" json:"log"`
+	LogLevel        string            `yaml:"log_level" json:"log_level"`
 	DownloadOptions map[string]string `yaml:"download_options" json:"download_options,omitempty"`
 }
 
@@ -52,6 +54,7 @@ func (c *Aria2Config) BuildCommand() []string {
 		"--rpc-allow-origin-all",
 		fmt.Sprintf("--log=%s", c.Log),
 		fmt.Sprintf("--rpc-listen-port=%d", c.Port),
+		fmt.Sprintf("--log-level=%s", c.LogLevel),
 	}
 
 	if c.Secret != "" {
@@ -71,6 +74,18 @@ type DaemonConfig struct {
 	Aria2                      Aria2Config       `yaml:"aria2" json:"aria2"`
 }
 
+func (c *Aria2Config) Validate() error {
+	if c.LogLevel != "" {
+		validLevels := []string{"debug", "info", "notice", "warn", "error"}
+		level := strings.ToLower(c.LogLevel)
+		valid := slices.Contains(validLevels, level)
+		if !valid {
+			return fmt.Errorf("invalid log level: %s. Must be one of %v", c.LogLevel, validLevels)
+		}
+	}
+	return nil
+}
+
 // Validate validates the daemon configuration
 func (c *DaemonConfig) Validate() error {
 	if c.Concurrency < 1 {
@@ -83,6 +98,11 @@ func (c *DaemonConfig) Validate() error {
 		if _, err := os.Stat(parent); os.IsNotExist(err) {
 			log.Printf("Warning: Parent directory of temporary_download_directory does not exist: %s", parent)
 		}
+	}
+
+	// aria2 validate
+	if err := c.Aria2.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -100,13 +120,7 @@ func (c *LoggingConfig) Validate() error {
 	validLevels := []string{"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 	level := strings.ToUpper(c.Level)
 
-	valid := false
-	for _, l := range validLevels {
-		if level == l {
-			valid = true
-			break
-		}
-	}
+	valid := slices.Contains(validLevels, level)
 
 	if !valid {
 		return fmt.Errorf("invalid log level: %s. Must be one of %v", c.Level, validLevels)
@@ -189,6 +203,7 @@ func (cm *ConfigManager) LoadConfig(configPath string) (*AppConfig, error) {
 			Aria2: Aria2Config{
 				Port:            6800,
 				Log:             "/tmp/aria2.log",
+				LogLevel:        "info", // debug, info, notice, warn, error
 				DownloadOptions: make(map[string]string),
 			},
 		},
@@ -275,6 +290,9 @@ func (cm *ConfigManager) LoadConfig(configPath string) (*AppConfig, error) {
 			}
 			if len(fileConfig.Daemon.Aria2.DownloadOptions) > 0 {
 				config.Daemon.Aria2.DownloadOptions = fileConfig.Daemon.Aria2.DownloadOptions
+			}
+			if fileConfig.Daemon.Aria2.LogLevel != "" {
+				config.Daemon.Aria2.LogLevel = fileConfig.Daemon.Aria2.LogLevel
 			}
 
 			// Logging config
