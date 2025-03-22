@@ -205,7 +205,7 @@ func (c *Aria2JsonRPC) Remove(gid string) error {
 
 // Sets the concurrency for aria2c
 func (c *Aria2JsonRPC) SetConcurrency(concurrency int) error {
-	params := []any{map[string]any{"max-concurrent-downloads": concurrency}}
+	params := []any{map[string]any{"max-concurrent-downloads": strconv.Itoa(concurrency)}}
 
 	_, err := c.callMethod("changeGlobalOption", params)
 	return err
