@@ -203,6 +203,14 @@ func (c *Aria2JsonRPC) Remove(gid string) error {
 	return err
 }
 
+// Sets the concurrency for aria2c
+func (c *Aria2JsonRPC) SetConcurrency(concurrency int) error {
+	params := []any{map[string]any{"max-concurrent-downloads": concurrency}}
+
+	_, err := c.callMethod("changeGlobalOption", params)
+	return err
+}
+
 // IsAria2Running checks if aria2c RPC server is running
 func IsAria2Running() bool {
 	client := NewAria2JsonRPC("")

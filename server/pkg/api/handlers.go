@@ -1,12 +1,14 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rzalawad/tdm/server/pkg/core"
+	"github.com/rzalawad/tdm/server/pkg/daemon"
 	"gorm.io/gorm"
 )
 
@@ -182,6 +184,16 @@ func handleUpdateConcurrency(c *gin.Context) {
 			return
 		}
 	}
+	config, err := core.GetConfig()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"concurrency": 1})
+		return
+	}
+
+	aria2Client := daemon.NewAria2JsonRPC(fmt.Sprintf("http://localhost:%d/jsonrpc", config.Daemon.Aria2.Port))
+	if err := aria2Client.SetConcurrency(req.Concurrency); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update concurrency: " + err.Error()})
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Concurrency updated successfully"})
 }
@@ -234,7 +246,6 @@ func handleGetConcurrency(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"concurrency": 1})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"concurrency": settings.Concurrency})
 }
 
