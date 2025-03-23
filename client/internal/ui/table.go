@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rzalawda/tdm/go_client/internal/api"
+	"github.com/rzalawad/tdm/go_client/internal/api"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
