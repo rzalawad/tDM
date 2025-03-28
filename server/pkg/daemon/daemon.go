@@ -25,14 +25,42 @@ type Aria2DownloadDaemon struct {
 	wg            sync.WaitGroup
 	db            *gorm.DB
 	workProcessor *WorkProcessor
+	daemonChan    chan DaemonMessage
+	serverChan    chan ServerMessage
 }
 
+type ServerMessage struct {
+	DownloadID int
+	Status     int
+}
+
+type DaemonMessage struct {
+	DownloadID int
+	Action     string
+}
+
+type HandlerAction struct {
+	DownloadID int
+	Action     string
+}
+
+type CompletionMessage struct {
+	DownloadID int
+	Status     int
+}
+
+const DAEMON_SLEEP = 100 * time.Millisecond
+const DOWNLOAD_HANDLER_SLEEP = 1 * time.Second
+
 // NewAria2DownloadDaemon creates a new download daemon
-func NewAria2DownloadDaemon(config *core.DaemonConfig) *Aria2DownloadDaemon {
+func NewAria2DownloadDaemon(config *core.DaemonConfig, daemonChan chan DaemonMessage, serverChan chan ServerMessage) *Aria2DownloadDaemon {
 	daemon := &Aria2DownloadDaemon{
 		config:      config,
 		aria2Client: NewAria2JsonRPC(fmt.Sprintf("http://localhost:%d/jsonrpc", config.Aria2.Port)),
 		running:     false,
+		daemonChan:  daemonChan,
+		db:          core.GetDB(),
+		serverChan:  serverChan,
 	}
 
 	// Create temporary download directory if specified
@@ -121,10 +149,9 @@ func (d *Aria2DownloadDaemon) cleanupOldDownloads() {
 
 	cutoffTime := time.Now().Add(-expireDuration)
 
-	db := core.GetDB()
 	var downloads []core.Download
 
-	result := db.Where("date_added < ?", cutoffTime).Find(&downloads)
+	result := d.db.Where("date_added < ?", cutoffTime).Find(&downloads)
 	if result.Error != nil {
 		log.Printf("Error querying old downloads: %v", result.Error)
 		return
@@ -151,12 +178,24 @@ func (d *Aria2DownloadDaemon) cleanupOldDownloads() {
 		}
 
 		// Delete the download record
-		if err := db.Delete(&download).Error; err != nil {
+		if err := d.db.Delete(&download).Error; err != nil {
 			log.Printf("Error deleting download: %v", err)
 		}
 	}
 
 	log.Printf("Cleanup completed, deleted %d old downloads", len(downloads))
+}
+
+func (d *Aria2DownloadDaemon) handleDaemonMessage(msg DaemonMessage, downloadRoutineChan chan HandlerAction) {
+	log.Printf("Handling daemon message: %v", msg)
+	switch msg.Action {
+	case "delete":
+		log.Printf("Forwarding delete message to download handler for ID: %d", msg.DownloadID)
+		downloadRoutineChan <- HandlerAction{
+			DownloadID: msg.DownloadID,
+			Action:     "delete",
+		}
+	}
 }
 
 // Start launches the daemon
@@ -182,15 +221,45 @@ func (d *Aria2DownloadDaemon) Start() error {
 
 		lastCleanupTime := time.Now()
 
+		// download routine channel map - stores a separate channel for each download
+		downloadRoutineChanMap := make(map[int]chan HandlerAction)
+
+		completionChan := make(chan CompletionMessage)
+
 		for d.running {
 			// Get database connection
-			db := core.GetDB()
+			db := d.db
 
-			// Find pending downloads
+			// Use a non-blocking select with timeout to process one message at a time
+			// This prevents the loop from getting stuck on channel operations
+			select {
+			case msg := <-completionChan:
+				log.Printf("Received completion message: %v", msg)
+				delete(downloadRoutineChanMap, msg.DownloadID)
+			case msg := <-d.daemonChan:
+				log.Printf("Received daemon message: %v", msg)
+				downloadHandlerChan, ok := downloadRoutineChanMap[msg.DownloadID]
+				log.Printf("Download handler channel: %v, ok: %v", downloadHandlerChan, ok)
+				if !ok {
+					log.Printf("Download handler channel not found for download ID: %d. Assuming that download is already finished.", msg.DownloadID)
+					d.serverChan <- ServerMessage{
+						DownloadID: msg.DownloadID,
+						Status:     0,
+					}
+					log.Printf("Sent server message for download ID: %d", msg.DownloadID)
+					continue
+				}
+				log.Printf("Forwarding delete message to download handler for ID: %d", msg.DownloadID)
+				d.handleDaemonMessage(msg, downloadHandlerChan)
+				log.Printf("Message sent to download handler for ID: %d", msg.DownloadID)
+			default:
+				// Non-blocking, continue with the loop
+			}
+
 			var pendingDownloads []core.Download
 			if err := db.Where("status = ?", core.StatusPending).Find(&pendingDownloads).Error; err != nil {
 				log.Printf("Error querying pending downloads: %v", err)
-				time.Sleep(5 * time.Second)
+				time.Sleep(DAEMON_SLEEP)
 				continue
 			}
 
@@ -231,9 +300,13 @@ func (d *Aria2DownloadDaemon) Start() error {
 					continue
 				}
 
-				// Start download in a separate goroutine
-				go handleDownloadWithAria2(download.ID, download.URL, download.Directory,
-					d.config.TemporaryDownloadDirectory, d.config.Mapper, d.config.Aria2.DownloadOptions)
+				// Create a dedicated channel for this download
+				downloadHandlerChan := make(chan HandlerAction)
+				downloadRoutineChanMap[int(download.ID)] = downloadHandlerChan
+
+				// Start download in a separate goroutine with its own dedicated channel
+				go d.handleDownloadWithAria2(download.ID, download.URL, download.Directory,
+					d.config.TemporaryDownloadDirectory, d.config.Mapper, d.config.Aria2.DownloadOptions, downloadHandlerChan, completionChan)
 
 				var group core.Group
 				db.First(&group, download.GroupID)
@@ -257,8 +330,8 @@ func (d *Aria2DownloadDaemon) Start() error {
 				lastCleanupTime = time.Now()
 			}
 
-			// Sleep before next iteration
-			time.Sleep(5 * time.Second)
+			// Add a small delay to prevent tight loop CPU usage
+			time.Sleep(DAEMON_SLEEP)
 		}
 	}()
 
@@ -331,8 +404,8 @@ func createTaskIfNotExists(db *gorm.DB, groupID uint, taskType core.TaskType) (*
 }
 
 // handleDownloadWithAria2 manages a single download with aria2
-func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
-	mapper map[string]string, aria2Options map[string]string) {
+func (d *Aria2DownloadDaemon) handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
+	mapper map[string]string, aria2Options map[string]string, commChan chan HandlerAction, completionChan chan CompletionMessage) {
 
 	db := core.GetDB()
 	aria2Client := NewAria2JsonRPC("")
@@ -421,7 +494,34 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 	startTime := time.Now()
 
 	for !completed {
-		time.Sleep(1 * time.Second)
+		time.Sleep(DOWNLOAD_HANDLER_SLEEP)
+
+		select {
+		case msg := <-commChan:
+			switch msg.Action {
+			case "delete":
+				log.Printf("Received delete message for download ID: %d", msg.DownloadID)
+				completed = true
+				log.Printf("Removing download from aria2: %s", gid)
+				aria2Client.Remove(gid)
+				log.Printf("Download removed from aria2: %s", gid)
+				download.Status = core.StatusFailed // Doesn't matter since we're deleting
+				log.Printf("Setting download status to failed: %d", download.ID)
+				log.Printf("Sending completion message for download ID: %d", download.ID)
+				completionChan <- CompletionMessage{
+					DownloadID: int(download.ID),
+					Status:     0,
+				}
+				log.Printf("Sent completion message for download ID: %d", download.ID)
+				d.serverChan <- ServerMessage{
+					DownloadID: int(download.ID),
+					Status:     0,
+				}
+				log.Printf("Sent server message for download ID: %d", download.ID)
+				return
+			}
+		default:
+		}
 
 		// Get download status
 		status, err := aria2Client.GetStatus(gid)
@@ -513,6 +613,22 @@ func handleDownloadWithAria2(downloadID uint, url, directory, tempDir string,
 				log.Printf("Error removing timed out download: %v", err)
 			}
 		}
+	}
+
+	// Determine the status code based on download.Status
+	var statusCode int
+	switch download.Status {
+	case core.StatusDownloaded:
+		statusCode = 0
+	case core.StatusFailed:
+		statusCode = 1
+	default:
+		statusCode = 2
+	}
+
+	completionChan <- CompletionMessage{
+		DownloadID: int(download.ID),
+		Status:     statusCode,
 	}
 
 	log.Printf("Download %s: %s", download.Status, url)

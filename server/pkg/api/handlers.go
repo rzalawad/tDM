@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -42,7 +43,14 @@ type DownloadResponse struct {
 }
 
 // SetupRoutes configures the API routes
-func SetupRoutes(router *gin.Engine) {
+func SetupRoutes(router *gin.Engine, daemonChan chan daemon.DaemonMessage, serverChan chan daemon.ServerMessage) {
+
+	router.Use(func(c *gin.Context) {
+		c.Set("daemonChannel", daemonChan)
+		c.Set("serverChannel", serverChan)
+		c.Next()
+	})
+
 	router.POST("/download", handleDownload)
 	router.DELETE("/delete/:id", handleDeleteDownload)
 	router.PUT("/settings/concurrency", handleUpdateConcurrency)
@@ -146,10 +154,44 @@ func handleDeleteDownload(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Deleting download: %d", id)
+
+	daemonChan := c.MustGet("daemonChannel").(chan daemon.DaemonMessage)
+	serverChan := c.MustGet("serverChannel").(chan daemon.ServerMessage)
+	deleteMsg := daemon.DaemonMessage{
+		DownloadID: id,
+		Action:     "delete",
+	}
+
+	// Send the message using a goroutine with timeout to prevent blocking indefinitely
+	msgSent := make(chan bool, 1)
+	go func() {
+		daemonChan <- deleteMsg
+		log.Printf("Sent message to daemon channel")
+		msgSent <- true
+		log.Printf("Message sent to daemon channel")
+	}()
+
+	// Wait for message to be sent or timeout
+	select {
+	case <-msgSent:
+		log.Printf("Daemon message sent successfully")
+	case <-time.After(5 * time.Second):
+		log.Printf("WARNING: Timeout sending message to daemon channel")
+		// Continue anyway to delete from database
+	}
+
+	// Wait for the message to be processed
+	log.Printf("Waiting for message from server channel")
+	msg := <-serverChan
+	log.Printf("Received message from server channel: %v", msg)
+
+	// Delete the download record from database
 	if err := db.Delete(&download).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete download: " + err.Error()})
 		return
 	}
+	log.Printf("Download %d deleted from database", id)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Delete request processed successfully"})
 }
