@@ -567,7 +567,8 @@ func (d *Aria2DownloadDaemon) handleDownloadWithAria2(downloadID uint, url, dire
 		download.TotalSize = &totalSize
 
 		if downloadSpeed > 0 {
-			speedStr := fmt.Sprintf("%.1f KB/s", float64(downloadSpeed)/1024)
+			// Store raw speed in bytes/sec
+			speedStr := fmt.Sprintf("%d", downloadSpeed)
 			download.Speed = &speedStr
 		}
 
@@ -581,8 +582,9 @@ func (d *Aria2DownloadDaemon) handleDownloadWithAria2(downloadID uint, url, dire
 			// Update average speed for completed download
 			totalTime := time.Since(startTime).Seconds()
 			if totalTime > 0 && totalLength > 0 {
-				avgSpeed := float64(totalLength) / totalTime / 1024 // KB/s
-				speedStr := fmt.Sprintf("%.1f KB/s", avgSpeed)
+				// Store raw average speed in bytes/sec
+				avgSpeed := int64(float64(totalLength) / totalTime)
+				speedStr := fmt.Sprintf("%d", avgSpeed)
 				download.Speed = &speedStr
 			}
 

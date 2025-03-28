@@ -332,7 +332,7 @@ func formatDownloadResponse(download *core.Download) DownloadResponse {
 		DateAdded: download.DateAdded.Format(time.RFC3339),
 	}
 
-	// Add optional fields if they exist
+	// Add speed in KB/s
 	if download.Speed != nil {
 		response.Speed = *download.Speed
 	} else {
