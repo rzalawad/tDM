@@ -149,7 +149,7 @@ func handleDeleteDownload(c *gin.Context) {
 
 	db := core.GetDB()
 	var download core.Download
-	if err := db.First(&download, id).Error; err != nil {
+	if err := db.Preload("Group").First(&download, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Download " + idStr + " not found"})
 		return
 	}
@@ -186,12 +186,42 @@ func handleDeleteDownload(c *gin.Context) {
 	msg := <-serverChan
 	log.Printf("Received message from server channel: %v", msg)
 
-	// Delete the download record from database
-	if err := db.Delete(&download).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete download: " + err.Error()})
+	// After receiving server channel message, handle database cleanup in a transaction
+	err = db.Transaction(func(tx *gorm.DB) error {
+		// First delete the download
+		if err := tx.Delete(&download).Error; err != nil {
+			return fmt.Errorf("failed to delete download: %w", err)
+		}
+		log.Printf("Download %d deleted from database", id)
+
+		// Check if this was the last download in the group
+		var remainingDownloads int64
+		if err := tx.Model(&core.Download{}).Where("group_id = ?", download.GroupID).Count(&remainingDownloads).Error; err != nil {
+			return fmt.Errorf("failed to check remaining downloads: %w", err)
+		}
+
+		// If this was the last download, clean up the group and its tasks
+		if remainingDownloads == 0 {
+			// Delete all tasks for this group
+			if err := tx.Where("group_id = ?", download.GroupID).Delete(&core.Task{}).Error; err != nil {
+				return fmt.Errorf("failed to delete tasks: %w", err)
+			}
+			log.Printf("Tasks for group %d deleted from database", download.GroupID)
+
+			// Delete the group
+			if err := tx.Delete(&download.Group).Error; err != nil {
+				return fmt.Errorf("failed to delete group: %w", err)
+			}
+			log.Printf("Group %d deleted from database", download.GroupID)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete: " + err.Error()})
 		return
 	}
-	log.Printf("Download %d deleted from database", id)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Delete request processed successfully"})
 }
