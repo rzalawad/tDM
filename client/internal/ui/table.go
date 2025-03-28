@@ -235,12 +235,13 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 
 func CreateLayoutWithTable(table *tview.Table, downloads []api.Download, concurrency int, maxDownloadSpeed int) (*tview.Flex, *tview.TextView, *tview.TextView) {
 	settingsText := fmt.Sprintf("[::b]SETTINGS[::-]\n"+
-		"Concurrency:     %d\n"+
+		"Concurrency:     %d            Total Speed:    %d KB/s\n"+
 		"Max Speed:       %d KB/s\n"+
 		"Total Downloads: %d\n"+
 		"Active:          %d\n"+
 		"Completed:       %d",
 		concurrency,
+		0,
 		maxDownloadSpeed,
 		len(downloads),
 		countActiveDownloads(downloads),
@@ -293,13 +294,24 @@ func CreateLayout(downloads []api.Download, concurrency int, maxDownloadSpeed in
 }
 
 func UpdateSettingsView(settingsView *tview.TextView, downloads []api.Download, concurrency int, maxDownloadSpeed int) {
+	totalSpeed := 0
+	for _, download := range downloads {
+		if download.Speed != "N/A" {
+			speed, err := strconv.Atoi(download.Speed)
+			if err == nil {
+				totalSpeed += speed
+			}
+		}
+	}
+
 	settingsText := fmt.Sprintf("[::b]SETTINGS[::-]\n"+
-		"Concurrency:     %d\n"+
+		"Concurrency:     %d            Total Speed:    %d KB/s\n"+
 		"Max Speed:       %d KB/s\n"+
 		"Total Downloads: %d\n"+
 		"Active:          %d\n"+
 		"Completed:       %d",
 		concurrency,
+		totalSpeed,
 		maxDownloadSpeed,
 		len(downloads),
 		countActiveDownloads(downloads),
