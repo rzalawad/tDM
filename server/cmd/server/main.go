@@ -70,8 +70,12 @@ func main() {
 		log.Fatalf("Error initializing database: %v", err)
 	}
 
+	// Communication channel with daemon
+	daemonChan := make(chan daemon.DaemonMessage, 100)
+	serverChan := make(chan daemon.ServerMessage, 100)
+
 	// Create and start daemon
-	downloadDaemon := daemon.NewAria2DownloadDaemon(&config.Daemon)
+	downloadDaemon := daemon.NewAria2DownloadDaemon(&config.Daemon, daemonChan, serverChan)
 	if err := downloadDaemon.Start(); err != nil {
 		log.Fatalf("Error starting download daemon: %v", err)
 	}
@@ -88,7 +92,7 @@ func main() {
 	}
 
 	router := gin.Default()
-	api.SetupRoutes(router)
+	api.SetupRoutes(router, daemonChan, serverChan)
 
 	// Start server in a goroutine
 	serverAddr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
