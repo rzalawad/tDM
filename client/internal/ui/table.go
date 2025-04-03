@@ -296,7 +296,7 @@ func CreateLayout(downloads []api.Download, concurrency int, maxDownloadSpeed in
 func UpdateSettingsView(settingsView *tview.TextView, downloads []api.Download, concurrency int, maxDownloadSpeed int) {
 	totalSpeed := 0
 	for _, download := range downloads {
-		if download.Speed != "N/A" {
+		if download.Speed != "N/A" && download.Status == "downloading" {
 			speed, err := strconv.Atoi(download.Speed)
 			if err == nil {
 				totalSpeed += speed
