@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -42,7 +43,14 @@ type DownloadResponse struct {
 }
 
 // SetupRoutes configures the API routes
-func SetupRoutes(router *gin.Engine) {
+func SetupRoutes(router *gin.Engine, daemonChan chan daemon.DaemonMessage, serverChan chan daemon.ServerMessage) {
+
+	router.Use(func(c *gin.Context) {
+		c.Set("daemonChannel", daemonChan)
+		c.Set("serverChannel", serverChan)
+		c.Next()
+	})
+
 	router.POST("/download", handleDownload)
 	router.DELETE("/delete/:id", handleDeleteDownload)
 	router.PUT("/settings/concurrency", handleUpdateConcurrency)
@@ -141,13 +149,77 @@ func handleDeleteDownload(c *gin.Context) {
 
 	db := core.GetDB()
 	var download core.Download
-	if err := db.First(&download, id).Error; err != nil {
+	if err := db.Preload("Group").First(&download, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Download " + idStr + " not found"})
 		return
 	}
 
-	if err := db.Delete(&download).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete download: " + err.Error()})
+	log.Printf("Deleting download: %d", id)
+
+	daemonChan := c.MustGet("daemonChannel").(chan daemon.DaemonMessage)
+	serverChan := c.MustGet("serverChannel").(chan daemon.ServerMessage)
+	deleteMsg := daemon.DaemonMessage{
+		DownloadID: id,
+		Action:     "delete",
+	}
+
+	// Send the message using a goroutine with timeout to prevent blocking indefinitely
+	msgSent := make(chan bool, 1)
+	go func() {
+		daemonChan <- deleteMsg
+		log.Printf("Sent message to daemon channel")
+		msgSent <- true
+		log.Printf("Message sent to daemon channel")
+	}()
+
+	// Wait for message to be sent or timeout
+	select {
+	case <-msgSent:
+		log.Printf("Daemon message sent successfully")
+	case <-time.After(5 * time.Second):
+		log.Printf("WARNING: Timeout sending message to daemon channel")
+		// Continue anyway to delete from database
+	}
+
+	// Wait for the message to be processed
+	log.Printf("Waiting for message from server channel")
+	msg := <-serverChan
+	log.Printf("Received message from server channel: %v", msg)
+
+	// After receiving server channel message, handle database cleanup in a transaction
+	err = db.Transaction(func(tx *gorm.DB) error {
+		// First delete the download
+		if err := tx.Delete(&download).Error; err != nil {
+			return fmt.Errorf("failed to delete download: %w", err)
+		}
+		log.Printf("Download %d deleted from database", id)
+
+		// Check if this was the last download in the group
+		var remainingDownloads int64
+		if err := tx.Model(&core.Download{}).Where("group_id = ?", download.GroupID).Count(&remainingDownloads).Error; err != nil {
+			return fmt.Errorf("failed to check remaining downloads: %w", err)
+		}
+
+		// If this was the last download, clean up the group and its tasks
+		if remainingDownloads == 0 {
+			// Delete all tasks for this group
+			if err := tx.Where("group_id = ?", download.GroupID).Delete(&core.Task{}).Error; err != nil {
+				return fmt.Errorf("failed to delete tasks: %w", err)
+			}
+			log.Printf("Tasks for group %d deleted from database", download.GroupID)
+
+			// Delete the group
+			if err := tx.Delete(&download.Group).Error; err != nil {
+				return fmt.Errorf("failed to delete group: %w", err)
+			}
+			log.Printf("Group %d deleted from database", download.GroupID)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete: " + err.Error()})
 		return
 	}
 
@@ -260,7 +332,7 @@ func formatDownloadResponse(download *core.Download) DownloadResponse {
 		DateAdded: download.DateAdded.Format(time.RFC3339),
 	}
 
-	// Add optional fields if they exist
+	// Add speed in KB/s
 	if download.Speed != nil {
 		response.Speed = *download.Speed
 	} else {

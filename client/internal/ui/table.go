@@ -209,13 +209,12 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 		if download.Speed == "N/A" {
 			speedText = download.Speed
 		} else {
-			var speedValue float64
-			fmt.Sscanf(download.Speed, "%f", &speedValue)
-
-			if speedValue >= 1024 {
-				speedText = fmt.Sprintf("%.1f MB/s", speedValue/1024)
+			var speedValue int64
+			_, err := fmt.Sscanf(download.Speed, "%d", &speedValue)
+			if err == nil {
+				speedText = formatSpeed(speedValue)
 			} else {
-				speedText = fmt.Sprintf("%d KB/s", int(speedValue))
+				speedText = "N/A"
 			}
 		}
 		table.SetCell(i+1, 4, createCell(speedText,
@@ -236,13 +235,14 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 
 func CreateLayoutWithTable(table *tview.Table, downloads []api.Download, concurrency int, maxDownloadSpeed int) (*tview.Flex, *tview.TextView, *tview.TextView) {
 	settingsText := fmt.Sprintf("[::b]SETTINGS[::-]\n"+
-		"Concurrency:     %d\n"+
-		"Max Speed:       %d KB/s\n"+
+		"Concurrency:     %d            Total Speed:    %s\n"+
+		"Max Speed:       %s\n"+
 		"Total Downloads: %d\n"+
 		"Active:          %d\n"+
 		"Completed:       %d",
 		concurrency,
-		maxDownloadSpeed,
+		formatSpeed(0),
+		formatSpeed(int64(maxDownloadSpeed)*1024), // Convert KB/s to bytes/s
 		len(downloads),
 		countActiveDownloads(downloads),
 		countCompletedDownloads(downloads))
@@ -294,13 +294,27 @@ func CreateLayout(downloads []api.Download, concurrency int, maxDownloadSpeed in
 }
 
 func UpdateSettingsView(settingsView *tview.TextView, downloads []api.Download, concurrency int, maxDownloadSpeed int) {
+	totalSpeedBytes := 0
+	for _, download := range downloads {
+		if download.Speed != "N/A" && download.Status == "downloading" {
+			speed, err := strconv.Atoi(download.Speed)
+			if err == nil {
+				totalSpeedBytes += speed
+			}
+		}
+	}
+
+	// Format the total speed string with proper units
+	totalSpeedStr := formatSpeed(int64(totalSpeedBytes))
+
 	settingsText := fmt.Sprintf("[::b]SETTINGS[::-]\n"+
-		"Concurrency:     %d\n"+
+		"Concurrency:     %d            Total Speed:    %s\n"+
 		"Max Speed:       %d KB/s\n"+
 		"Total Downloads: %d\n"+
 		"Active:          %d\n"+
 		"Completed:       %d",
 		concurrency,
+		totalSpeedStr,
 		maxDownloadSpeed,
 		len(downloads),
 		countActiveDownloads(downloads),
