@@ -189,8 +189,9 @@ func UpdateDownloadsTable(table *tview.Table, downloads []api.Download) {
 				SetAlign(align).SetMaxWidth(1)
 		}
 
-		table.SetCell(i+1, 0, createCell(fmt.Sprintf("%d", download.ID),
-			tcell.ColorLightGray, tview.AlignRight))
+		downloadIdCell := createCell(fmt.Sprintf("%d", download.ID), tcell.ColorLightGray, tview.AlignRight)
+		downloadIdCell.SetMaxWidth(5)
+		table.SetCell(i+1, 0, downloadIdCell)
 
 		urlCell := createCell(download.URL, tcell.ColorLightGray, tview.AlignLeft)
 		urlCell.SetExpansion(2)
